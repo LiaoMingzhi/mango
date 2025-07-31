@@ -2,12 +2,13 @@
 **/.history/
 **/.vscode/
 **/.idea/
-
+**/.cursor/
 # OSX
 .DS_Store
 
 # Rust build directory
 **/target
+**/shared
 .pre-commit*
 
 # Move build directory

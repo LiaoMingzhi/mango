@@ -36,6 +36,7 @@ use mgo_swarm_config::network_config::NetworkConfig;
 use mgo_swarm_config::network_config_builder::ConfigBuilder;
 use mgo_swarm_config::node_config_builder::FullnodeConfigBuilder;
 use mgo_types::crypto::{SignatureScheme, MgoKeyPair};
+use mgo_types::messages_checkpoint::CheckpointSequenceNumber;
 use tracing::info;
 
 #[allow(clippy::large_enum_variant)]
@@ -155,6 +156,55 @@ pub enum MgoCommand {
         #[clap(subcommand)]
         fire_drill: FireDrill,
     },
+
+    /// Tool for consensus rollback operations
+    #[clap(name = "rollback")]
+    Rollback {
+        /// Sets the file storing the state of our user accounts (an empty one will be created if missing)
+        #[clap(long = "client.config")]
+        config: Option<PathBuf>,
+        #[clap(subcommand)]
+        cmd: RollbackCommand,
+        /// Return command outputs in json format.
+        #[clap(long, global = true)]
+        json: bool,
+    },
+}
+
+/// 执行回滚命令
+async fn run_rollback_command(cmd: RollbackCommand) -> Result<(), anyhow::Error> {
+    match cmd {
+        RollbackCommand::ToCheckpoint { checkpoint, force, config } => {
+            println!("开始回滚到检查点 {} (强制模式: {})", checkpoint, force);
+            
+            // TODO: 实现实际的回滚逻辑
+            // 这里需要:
+            // 1. 加载节点配置
+            // 2. 创建RollbackManager实例
+            // 3. 执行回滚操作
+            
+            println!("回滚命令已接收，目标检查点: {}", checkpoint);
+            println!("注意: 回滚功能正在开发中，此命令目前只是占位符");
+            
+            Ok(())
+        }
+        RollbackCommand::Status { config } => {
+            println!("获取回滚状态");
+            
+            // TODO: 实现状态查询逻辑
+            println!("回滚状态: 空闲");
+            
+            Ok(())
+        }
+        RollbackCommand::Cancel { config } => {
+            println!("取消当前回滚操作");
+            
+            // TODO: 实现取消逻辑
+            println!("回滚操作已取消");
+            
+            Ok(())
+        }
+    }
 }
 
 impl MgoCommand {
@@ -320,6 +370,7 @@ impl MgoCommand {
                 cmd,
             } => execute_move_command(package_path, build_config, cmd),
             MgoCommand::FireDrill { fire_drill } => run_fire_drill(fire_drill).await,
+            MgoCommand::Rollback { cmd, .. } => run_rollback_command(cmd).await,
         }
     }
 }
@@ -655,4 +706,37 @@ fn read_line() -> Result<String, anyhow::Error> {
     let _ = stdout().flush();
     io::stdin().read_line(&mut s)?;
     Ok(s.trim_end().to_string())
+}
+
+/// Rollback command subcommands
+#[derive(Parser)]
+#[clap(rename_all = "kebab-case")]
+pub enum RollbackCommand {
+    /// Rollback to a specific checkpoint
+    #[clap(name = "to-checkpoint")]
+    ToCheckpoint {
+        /// Target checkpoint sequence number
+        #[clap(long = "checkpoint")]
+        checkpoint: CheckpointSequenceNumber,
+        /// Force rollback (skip safety checks)
+        #[clap(long = "force")]
+        force: bool,
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+    },
+    /// Get current rollback status
+    #[clap(name = "status")]
+    Status {
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+    },
+    /// Cancel current rollback operation
+    #[clap(name = "cancel")]
+    Cancel {
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+    },
 }
