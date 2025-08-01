@@ -1162,6 +1162,11 @@ impl ColdStartManager {
         Err(last_error.unwrap_or_else(|| anyhow!("{} 重试次数耗尽", operation_name)))
     }
 
+    /// 获取检查点存储
+    pub fn get_checkpoint_store(&self) -> &Arc<CheckpointStore> {
+        &self.checkpoint_store
+    }
+
     /// 取消当前冷启动操作
     pub async fn cancel_cold_start(&self) -> Result<()> {
         let mut state = self.cold_start_state.lock().await;

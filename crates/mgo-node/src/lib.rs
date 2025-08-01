@@ -125,6 +125,7 @@ use crate::metrics::{GrpcMetrics, MgoNodeMetrics};
 pub mod admin;
 mod handle;
 pub mod metrics;
+pub mod high_availability;
 
 pub struct ValidatorComponents {
     validator_server_handle: JoinHandle<Result<()>>,

@@ -21,6 +21,7 @@ use uuid::Uuid;
 mod guards;
 pub mod histogram;
 pub mod metered_channel;
+pub mod health_monitoring_integration;
 pub use guards::*;
 
 pub const TX_TYPE_SINGLE_WRITER_TX: &str = "single_writer";
