@@ -1,0 +1,20 @@
+[build]
+jobs = 1
+
+[profile.dev]
+opt-level = 1
+debug = 1
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = 'unwind'
+incremental = true
+codegen-units = 256
+
+[profile.dev.package.aws-sdk-ec2]
+opt-level = 0
+debug = false
+
+[profile.dev.package.ring]
+opt-level = 0
+debug = false

@@ -25,7 +25,7 @@ tracing = "0.1.36"
 serde = { version = "1.0.144", features = ["derive"] }
 url = "2.3.1"
 
-mgo-move.workspace = true
+mgo-move = { workspace = true, features = ["build"] }
 mgo-move-build.workspace = true
 mgo-sdk.workspace = true
 mgo-source-validation.workspace = true
