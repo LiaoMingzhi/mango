@@ -1,13 +1,13 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 健康检查器模块
+//! Health checker module
 //! 
-//! 负责检查节点的各个组件的健康状态，包括：
-//! - 共识系统健康状态
-//! - 网络连接健康状态
-//! - 存储系统健康状态  
-//! - 交易执行健康状态
+//! Responsible for checking the health status of various node components, including:
+//! - Consensus system health status
+//! - Network connection health status
+//! - Storage system health status  
+//! - Transaction execution health status
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -18,20 +18,20 @@ use mgo_types::base_types::AuthorityName;
 use crate::authority::AuthorityState;
 use crate::checkpoints::CheckpointStore;
 
-/// 健康检查配置
+/// Health check configuration
 #[derive(Debug, Clone)]
 pub struct HealthCheckConfig {
-    /// 健康检查超时时间
+    /// Health check timeout
     pub timeout: Duration,
-    /// 网络连接检查超时
+    /// Network connection check timeout
     pub network_timeout: Duration,
-    /// 存储检查超时
+    /// Storage check timeout
     pub storage_timeout: Duration,
-    /// 共识检查超时
+    /// Consensus check timeout
     pub consensus_timeout: Duration,
-    /// 执行检查超时
+    /// Execution check timeout
     pub execution_timeout: Duration,
-    /// 是否启用详细检查
+    /// Whether to enable detailed check
     pub enable_detailed_check: bool,
 }
 

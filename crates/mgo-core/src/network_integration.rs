@@ -1,9 +1,9 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 网络层集成模块
+//! Network layer integration module
 //! 
-//! 将冷启动管理器和健康监控系统与网络层功能进行集成
+//! Integrates cold start manager and health monitoring system with network layer functionality
 
 use std::sync::Arc;
 use anyhow::Result;
@@ -13,9 +13,10 @@ use crate::cold_start::{ColdStartManager, ColdStartResult};
 use crate::health_monitor::{HealthMonitor, HealthStatus};
 use crate::authority::AuthorityState;
 
-/// 网络集成管理器
+/// Network integration manager
 /// 
-/// 这个结构体负责协调冷启动管理器和健康监控系统与网络层的交互
+/// This struct is responsible for coordinating interactions between cold start manager 
+/// and health monitoring system with the network layer
 pub struct NetworkIntegrationManager {
     cold_start_manager: Arc<ColdStartManager>,
     health_monitor: Arc<HealthMonitor>,
@@ -23,7 +24,7 @@ pub struct NetworkIntegrationManager {
 }
 
 impl NetworkIntegrationManager {
-    /// 创建新的网络集成管理器
+    /// Create a new network integration manager
     pub fn new(
         cold_start_manager: Arc<ColdStartManager>,
         health_monitor: Arc<HealthMonitor>,

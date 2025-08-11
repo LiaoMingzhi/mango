@@ -1,9 +1,9 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! mgo-node 的高可用性扩展模块
+//! High availability extension module for mgo-node
 //! 
-//! 提供了与 MgoNode 集成的高可用性管理功能
+//! Provides high availability management functionality integrated with MgoNode
 
 use std::sync::Arc;
 use anyhow::Result;
@@ -17,17 +17,17 @@ use mgo_core::integration::{
     HighAvailabilityManager, HighAvailabilityConfig, SystemState
 };
 
-/// MgoNode 的高可用性扩展
+/// High availability extension for MgoNode
 /// 
-/// 这个结构体将高可用性管理器与 MgoNode 集成，
-/// 提供了节点级别的故障检测和自动恢复功能
+/// This struct integrates the high availability manager with MgoNode,
+/// providing node-level fault detection and automatic recovery functionality
 pub struct MgoNodeHighAvailability {
     ha_manager: Arc<HighAvailabilityManager>,
     node_name: String,
 }
 
 impl MgoNodeHighAvailability {
-    /// 创建新的高可用性扩展
+    /// Create a new high availability extension
     pub fn new(
         config: HighAvailabilityConfig,
         authority_state: Arc<AuthorityState>,

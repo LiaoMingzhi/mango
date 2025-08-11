@@ -1,13 +1,13 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 健康监控模块
+//! Health monitoring module
 //! 
-//! 此模块提供了Mango Network的健康监控和攻击检测功能，包括：
-//! - 节点健康状态检查
-//! - 网络异常检测
-//! - 攻击行为识别
-//! - 告警机制
+//! This module provides health monitoring and attack detection for Mango Network, including:
+//! - Node health status checking
+//! - Network anomaly detection
+//! - Attack behavior identification
+//! - Alert mechanisms
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -27,22 +27,22 @@ pub use health_checker::{HealthChecker, HealthStatus, HealthCheckConfig};
 pub use attack_detector::{AttackDetector, AttackIndicator, AttackType};
 pub use alert_manager::{AlertManager, AlertLevel, AlertConfig};
 
-/// 健康监控指标
+/// Health monitoring metrics
 #[derive(Debug)]
 pub struct HealthMetrics {
-    /// 健康检查总次数
+    /// Total number of health checks
     pub health_checks_total: IntCounter,
-    /// 健康检查失败次数
+    /// Total number of failed health checks
     pub health_check_failures_total: IntCounter,
-    /// 当前健康状态 (1: 健康, 0: 不健康)
+    /// Current health status (1: healthy, 0: unhealthy)
     pub current_health_status: IntGauge,
-    /// 攻击检测总次数
+    /// Total number of attack detections
     pub attack_detections_total: IntCounter,
-    /// 当前攻击指标数量
+    /// Number of active attack indicators
     pub active_attack_indicators: IntGauge,
-    /// 健康检查耗时
+    /// Health check duration
     pub health_check_duration: Histogram,
-    /// 告警发送总次数
+    /// Total number of alerts sent
     pub alerts_sent_total: IntCounter,
 }
 

@@ -20,7 +20,7 @@ async fn test_rollback_metrics_creation() {
     let registry = Registry::new();
     let metrics = RollbackMetrics::new(&registry);
     
-    // 测试指标是否正常创建
+    // Test if metrics are created properly
     assert!(metrics.rollback_operations_total.get() >= 0);
     assert!(metrics.rollback_success_total.get() >= 0);
     assert!(metrics.rollback_failure_total.get() >= 0);
@@ -32,14 +32,14 @@ async fn test_rollback_state_transitions() {
     let temp_dir = tempdir().unwrap();
     let db_path = temp_dir.path().to_path_buf();
     
-    // 创建模拟的组件
+    // Create mock components
     let checkpoint_store = Arc::new(CheckpointStore::new(&db_path.join("checkpoints")));
     let registry = Registry::new();
     let metrics = RollbackMetrics::new(&registry);
     
     let config = RollbackConfig::default();
     
-    // 创建回滚管理器（使用模拟的组件）
+    // Create rollback manager (using mock components)
     let rollback_manager = RollbackManager::new(
         config,
         checkpoint_store,

@@ -1,9 +1,10 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 系统集成模块
+//! System Integration Module
 //! 
-//! 将回滚管理器、冷启动管理器和健康监控系统集成为统一的高可用性管理系统
+//! Integrates rollback manager, cold start manager and health monitoring system 
+//! into a unified high availability management system
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,22 +27,22 @@ use crate::health_monitor::attack_detector::AttackDetectionConfig;
 #[cfg(test)]
 mod tests;
 
-/// 高可用性系统配置
+/// High availability system configuration
 #[derive(Debug, Clone)]
 pub struct HighAvailabilityConfig {
-    /// 回滚配置
+    /// Rollback configuration
     pub rollback: RollbackConfig,
-    /// 冷启动配置
+    /// Cold start configuration
     pub cold_start: ColdStartConfig,
-    /// 监控配置
+    /// Monitor configuration
     pub monitor: MonitorConfig,
-    /// 是否启用自动故障恢复
+    /// Enable automatic fault recovery
     pub enable_auto_recovery: bool,
-    /// 自动恢复触发阈值
+    /// Auto recovery trigger threshold
     pub auto_recovery_threshold: u8,
-    /// 故障恢复间隔
+    /// Fault recovery interval
     pub recovery_interval: Duration,
-    /// 最大连续恢复尝试次数
+    /// Maximum consecutive recovery attempts
     pub max_recovery_attempts: u32,
 }
 
@@ -52,52 +53,53 @@ impl Default for HighAvailabilityConfig {
             cold_start: ColdStartConfig::default(),
             monitor: MonitorConfig::default(),
             enable_auto_recovery: true,
-            auto_recovery_threshold: 3, // 连续3次健康检查失败后触发恢复
-            recovery_interval: Duration::from_secs(300), // 5分钟
+            auto_recovery_threshold: 3, // Trigger recovery after 3 consecutive health check failures
+            recovery_interval: Duration::from_secs(300), // 5 minutes
             max_recovery_attempts: 3,
         }
     }
 }
 
-/// 系统状态
+/// System state
 #[derive(Debug, Clone, PartialEq)]
 pub enum SystemState {
-    /// 正常运行
+    /// Running normally
     Healthy,
-    /// 健康度下降，需要关注
+    /// Health degraded, needs attention
     Degraded,
-    /// 系统异常，需要干预
+    /// System abnormal, needs intervention
     Unhealthy,
-    /// 正在恢复中
+    /// Recovery in progress
     Recovering,
-    /// 系统已停止
+    /// System stopped
     Stopped,
-    /// 错误状态
+    /// Error state
     Error(String),
 }
 
-/// 恢复策略
+/// Recovery strategy
 #[derive(Debug, Clone, PartialEq)]
 pub enum RecoveryStrategy {
-    /// 无需恢复
+    /// No recovery needed
     None,
-    /// 重启服务
+    /// Restart services
     RestartServices,
-    /// 执行回滚
+    /// Execute rollback
     Rollback {
         target_checkpoint: mgo_types::messages_checkpoint::CheckpointSequenceNumber,
     },
-    /// 执行冷启动
+    /// Execute cold start
     ColdStart,
-    /// 混合策略（先回滚再冷启动）
+    /// Hybrid strategy (rollback first then cold start)
     Hybrid {
         target_checkpoint: mgo_types::messages_checkpoint::CheckpointSequenceNumber,
     },
 }
 
-/// 高可用性管理器
+/// High availability manager
 /// 
-/// 统一管理回滚、冷启动和健康监控功能，提供自动故障检测和恢复能力
+/// Unified management of rollback, cold start and health monitoring functions,
+/// providing automatic fault detection and recovery capabilities
 pub struct HighAvailabilityManager {
     config: HighAvailabilityConfig,
     rollback_manager: Arc<RollbackManager>,
@@ -110,7 +112,7 @@ pub struct HighAvailabilityManager {
 }
 
 impl HighAvailabilityManager {
-    /// 创建新的高可用性管理器
+    /// Create a new high availability manager
     pub fn new(
         config: HighAvailabilityConfig,
         authority_state: Arc<AuthorityState>,
@@ -118,12 +120,12 @@ impl HighAvailabilityManager {
         network_client: Arc<NetworkAuthorityClient>,
         registry: &Registry,
     ) -> Result<Self> {
-        // 创建各组件的指标
+        // Create metrics for each component
         let rollback_metrics = RollbackMetrics::new(registry);
         let cold_start_metrics = ColdStartMetrics::new(registry);
         let health_metrics = Arc::new(HealthMetrics::default());
 
-        // 创建回滚管理器
+        // Create rollback manager
         let rollback_manager = Arc::new(RollbackManager::new(
             config.rollback.clone(),
             checkpoint_store.clone(),
@@ -132,7 +134,7 @@ impl HighAvailabilityManager {
             rollback_metrics,
         ));
 
-        // 创建冷启动管理器
+        // Create cold start manager
         let cold_start_manager = Arc::new(ColdStartManager::new(
             config.cold_start.clone(),
             checkpoint_store.clone(),
@@ -141,7 +143,7 @@ impl HighAvailabilityManager {
             cold_start_metrics,
         ));
 
-        // 创建健康监控组件
+        // Create health monitoring components
         let health_checker = Arc::new(HealthChecker::new(
             config.monitor.health_check.clone(),
             authority_state.clone(),
@@ -158,7 +160,7 @@ impl HighAvailabilityManager {
             config.monitor.alert.clone(),
         ));
 
-        // 创建健康监控管理器
+        // Create health monitoring manager
         let health_monitor = Arc::new(HealthMonitor::new(
             config.monitor.clone(),
             health_checker,
@@ -179,86 +181,86 @@ impl HighAvailabilityManager {
         })
     }
 
-    /// 启动高可用性管理器
+    /// Start the high availability manager
     #[instrument(level = "info", skip(self))]
     pub async fn start(&self) -> Result<()> {
-        info!("启动高可用性管理器");
+        info!("Starting high availability manager");
 
-        // 重置停止信号
+        // Reset stop signal
         {
             let mut stop_signal = self.stop_signal.lock().await;
             *stop_signal = false;
         }
 
-        // 更新系统状态
+        // Update system state
         {
             let mut state = self.system_state.lock().await;
             *state = SystemState::Healthy;
         }
 
-        // 启动各个组件
+        // Start all components
         self.health_monitor.start().await?;
-        info!("健康监控系统已启动");
+        info!("Health monitoring system started");
 
-        // 启动自动恢复循环
+        // Start auto recovery loop
         if self.config.enable_auto_recovery {
             let manager = Arc::new(self.clone());
             tokio::spawn(async move {
                 if let Err(e) = manager.run_auto_recovery_loop().await {
-                    error!("自动恢复循环运行失败: {:?}", e);
+                    error!("Auto recovery loop execution failed: {:?}", e);
                 }
             });
-            info!("自动恢复系统已启动");
+            info!("Auto recovery system started");
         }
 
-        info!("高可用性管理器启动成功");
+        info!("High availability manager started successfully");
         Ok(())
     }
 
-    /// 停止高可用性管理器
+    /// Stop the high availability manager
     #[instrument(level = "info", skip(self))]
     pub async fn stop(&self) -> Result<()> {
-        info!("停止高可用性管理器");
+        info!("Stopping high availability manager");
 
-        // 设置停止信号
+        // Set stop signal
         {
             let mut stop_signal = self.stop_signal.lock().await;
             *stop_signal = true;
         }
 
-        // 停止健康监控
+        // Stop health monitoring
         self.health_monitor.stop().await?;
 
-        // 更新系统状态
+        // Update system state
         {
             let mut state = self.system_state.lock().await;
             *state = SystemState::Stopped;
         }
 
-        info!("高可用性管理器已停止");
+        info!("High availability manager stopped");
         Ok(())
     }
 
-    /// 获取当前系统状态
+    /// Get current system state
     pub async fn get_system_state(&self) -> SystemState {
         let state = self.system_state.lock().await;
         state.clone()
     }
 
-    /// 手动执行健康检查
+    /// Manually perform health check
     pub async fn perform_health_check(&self) -> Result<HealthStatus> {
         self.health_monitor.perform_health_check().await
     }
 
-    /// 手动执行回滚
+    /// Manually execute rollback
     pub async fn execute_rollback(
         &self,
         target_checkpoint: mgo_types::messages_checkpoint::CheckpointSequenceNumber,
         force: bool,
     ) -> Result<RollbackResult> {
-        info!("手动执行回滚到检查点 {}", target_checkpoint);
+        info!("Manually executing rollback to checkpoint {}", target_checkpoint);
         
-        // 更新系统状态
+        // Update system state
         {
             let mut state = self.system_state.lock().await;
             *state = SystemState::Recovering;
@@ -266,23 +268,23 @@ impl HighAvailabilityManager {
 
         let result = self.rollback_manager.rollback_to_checkpoint(target_checkpoint, force).await;
 
-        // 根据结果更新系统状态
+        // Update system state based on result
         {
             let mut state = self.system_state.lock().await;
             match &result {
                 Ok(_) => *state = SystemState::Healthy,
-                Err(_) => *state = SystemState::Error("回滚失败".to_string()),
+                Err(_) => *state = SystemState::Error("Rollback failed".to_string()),
             }
         }
 
         result
     }
 
-    /// 手动执行冷启动
+    /// Manually execute cold start
     pub async fn execute_cold_start(&self) -> Result<ColdStartResult> {
-        info!("手动执行冷启动");
+        info!("Manually executing cold start");
         
-        // 更新系统状态
+        // Update system state
         {
             let mut state = self.system_state.lock().await;
             *state = SystemState::Recovering;
@@ -290,39 +292,39 @@ impl HighAvailabilityManager {
 
         let result = self.cold_start_manager.perform_cold_start().await;
 
-        // 根据结果更新系统状态
+        // Update system state based on result
         {
             let mut state = self.system_state.lock().await;
             match &result {
                 Ok(_) => *state = SystemState::Healthy,
-                Err(_) => *state = SystemState::Error("冷启动失败".to_string()),
+                Err(_) => *state = SystemState::Error("Cold start failed".to_string()),
             }
         }
 
         result
     }
 
-    /// 分析系统健康状态并确定恢复策略
+    /// Analyze system health status and determine recovery strategy
     async fn analyze_recovery_strategy(&self, health_status: &HealthStatus) -> RecoveryStrategy {
         let health_score = health_status.health_score();
 
         if health_score >= 75 {
-            // 健康度良好，无需恢复
+            // Good health, no recovery needed
             return RecoveryStrategy::None;
         }
 
         if health_score >= 50 {
-            // 健康度中等，尝试重启服务
+            // Medium health, try restarting services
             return RecoveryStrategy::RestartServices;
         }
 
-        // 检查攻击指标
+        // Check attack indicators
         if let Ok(indicators) = self.health_monitor.get_attack_detector().detect_attack_signs().await {
             if !indicators.is_empty() {
-                // 检测到攻击，根据攻击类型选择策略
+                // Attack detected, choose strategy based on attack type
                 for indicator in &indicators {
                     if indicator.is_critical() {
-                        // 严重攻击，执行混合恢复策略
+                        // Critical attack, execute hybrid recovery strategy
                         if let Ok(latest_checkpoint) = self.cold_start_manager.get_checkpoint_store()
                             .get_highest_executed_checkpoint() {
                             if let Some(checkpoint) = latest_checkpoint {
@@ -337,7 +339,7 @@ impl HighAvailabilityManager {
             }
         }
 
-        // 健康度较低，尝试回滚
+        // Low health, try rollback
         if let Ok(latest_checkpoint) = self.cold_start_manager.get_checkpoint_store()
             .get_highest_executed_checkpoint() {
             if let Some(checkpoint) = latest_checkpoint {
@@ -349,54 +351,54 @@ impl HighAvailabilityManager {
             }
         }
 
-        // 最后的选择：冷启动
+        // Last resort: cold start
         RecoveryStrategy::ColdStart
     }
 
-    /// 执行恢复策略
+    /// Execute recovery strategy
     async fn execute_recovery_strategy(&self, strategy: &RecoveryStrategy) -> Result<()> {
         match strategy {
             RecoveryStrategy::None => {
-                info!("系统健康，无需恢复");
+                info!("System healthy, no recovery needed");
                 Ok(())
             }
             RecoveryStrategy::RestartServices => {
-                info!("重启服务以恢复系统健康");
-                // 这里可以添加重启服务的逻辑
-                // 目前简化为发送告警
+                info!("Restarting services to restore system health");
+                // Service restart logic can be added here
+                // Currently simplified to send alert
                                         self.health_monitor.get_alert_manager()
-                    .send_alert(AlertLevel::Warning, "建议重启服务以恢复系统健康")
+                    .send_alert(AlertLevel::Warning, "Recommend restarting services to restore system health")
                     .await?;
                 Ok(())
             }
             RecoveryStrategy::Rollback { target_checkpoint } => {
-                info!("执行回滚到检查点 {} 以恢复系统", target_checkpoint);
+                info!("Executing rollback to checkpoint {} to restore system", target_checkpoint);
                 self.rollback_manager
                     .rollback_to_checkpoint(*target_checkpoint, false)
                     .await?;
                 Ok(())
             }
             RecoveryStrategy::ColdStart => {
-                info!("执行冷启动以恢复系统");
+                info!("Executing cold start to restore system");
                 self.cold_start_manager.perform_cold_start().await?;
                 Ok(())
             }
             RecoveryStrategy::Hybrid { target_checkpoint } => {
-                info!("执行混合恢复策略：先回滚到检查点 {}，然后冷启动", target_checkpoint);
+                info!("Executing hybrid recovery strategy: rollback to checkpoint {} first, then cold start", target_checkpoint);
                 
-                // 先执行回滚
+                // Execute rollback first
                 match self.rollback_manager
                     .rollback_to_checkpoint(*target_checkpoint, false)
                     .await {
                     Ok(_) => {
-                        info!("回滚成功，开始冷启动");
-                        // 等待一段时间让系统稳定
+                        info!("Rollback successful, starting cold start");
+                        // Wait for system to stabilize
                         tokio::time::sleep(Duration::from_secs(10)).await;
-                        // 执行冷启动
+                        // Execute cold start
                         self.cold_start_manager.perform_cold_start().await?;
                     }
                     Err(e) => {
-                        warn!("回滚失败: {:?}，直接执行冷启动", e);
+                        warn!("Rollback failed: {:?}, executing cold start directly", e);
                         self.cold_start_manager.perform_cold_start().await?;
                     }
                 }
@@ -405,23 +407,23 @@ impl HighAvailabilityManager {
         }
     }
 
-    /// 自动恢复主循环
+    /// Auto recovery main loop
     async fn run_auto_recovery_loop(&self) -> Result<()> {
-        info!("开始自动恢复监控循环");
+        info!("Starting auto recovery monitoring loop");
         
         let mut consecutive_failures = 0u8;
         
         loop {
-            // 检查停止信号
+            // Check stop signal
             {
                 let stop_signal = self.stop_signal.lock().await;
                 if *stop_signal {
-                    info!("收到停止信号，退出自动恢复循环");
+                    info!("Received stop signal, exiting auto recovery loop");
                     break;
                 }
             }
 
-            // 检查是否需要等待恢复间隔
+            // Check if need to wait for recovery interval
             {
                 let last_recovery = self.last_recovery_time.lock().await;
                 if let Some(last_time) = *last_recovery {
@@ -432,35 +434,35 @@ impl HighAvailabilityManager {
                 }
             }
 
-            // 执行健康检查
+            // Execute health check
             match self.health_monitor.perform_health_check().await {
                 Ok(health_status) => {
                     let health_score = health_status.health_score();
                     
                     if health_status.is_healthy() {
-                        // 系统健康，重置失败计数
+                        // System healthy, reset failure count
                         consecutive_failures = 0;
                         
-                        // 更新系统状态
+                        // Update system state
                         {
                             let mut state = self.system_state.lock().await;
                             if *state != SystemState::Healthy {
                                 *state = SystemState::Healthy;
-                                info!("系统已恢复健康状态");
+                                info!("System has restored to healthy state");
                             }
                         }
                     } else {
-                        // 系统不健康，增加失败计数
+                        // System unhealthy, increase failure count
                         consecutive_failures += 1;
                         
                         warn!(
-                            "健康检查失败 ({}/{}): 健康分数 {}/100",
+                            "Health check failed ({}/{}): health score {}/100",
                             consecutive_failures,
                             self.config.auto_recovery_threshold,
                             health_score
                         );
 
-                        // 更新系统状态
+                        // Update system state
                         {
                             let mut state = self.system_state.lock().await;
                             if health_score >= 50 {
@@ -470,18 +472,18 @@ impl HighAvailabilityManager {
                             }
                         }
 
-                        // 检查是否需要触发自动恢复
+                        // Check if auto recovery needs to be triggered
                         if consecutive_failures >= self.config.auto_recovery_threshold {
-                            // 检查恢复尝试次数限制
+                            // Check recovery attempt limit
                             let current_attempts = {
                                 let attempts = self.recovery_attempts.lock().await;
                                 *attempts
                             };
 
                             if current_attempts < self.config.max_recovery_attempts {
-                                info!("触发自动恢复 (尝试 {}/{})", current_attempts + 1, self.config.max_recovery_attempts);
+                                info!("Triggering auto recovery (attempt {}/{})", current_attempts + 1, self.config.max_recovery_attempts);
                                 
-                                // 更新系统状态为恢复中
+                                // Update system state为恢复中
                                 {
                                     let mut state = self.system_state.lock().await;
                                     *state = SystemState::Recovering;
@@ -489,21 +491,21 @@ impl HighAvailabilityManager {
 
                                 // 分析并执行恢复策略
                                 let strategy = self.analyze_recovery_strategy(&health_status).await;
-                                info!("选择恢复策略: {:?}", strategy);
+                                info!("Selected recovery strategy: {:?}", strategy);
 
                                 match self.execute_recovery_strategy(&strategy).await {
                                     Ok(()) => {
-                                        info!("自动恢复执行成功");
+                                        info!("Auto recovery executed successfully");
                                         consecutive_failures = 0;
                                         
-                                        // 重置恢复尝试计数
+                                        // Reset recovery attempt counter
                                         {
                                             let mut attempts = self.recovery_attempts.lock().await;
                                             *attempts = 0;
                                         }
                                     }
                                     Err(e) => {
-                                        error!("自动恢复执行失败: {:?}", e);
+                                        error!("Auto recovery execution failed: {:?}", e);
                                         
                                         // 增加恢复尝试计数
                                         {
@@ -515,7 +517,7 @@ impl HighAvailabilityManager {
                                                                         let _ = self.health_monitor.get_alert_manager()
                                             .send_alert(
                                                 AlertLevel::Critical,
-                                                &format!("自动恢复失败: {:?}", e)
+                                                &format!("Auto recovery failed: {:?}", e)
                                             ).await;
                                     }
                                 }
@@ -535,20 +537,20 @@ impl HighAvailabilityManager {
                                 let _ = self.health_monitor.get_alert_manager()
                                     .send_alert(
                                         AlertLevel::Critical,
-                                        "已达到最大自动恢复尝试次数，需要人工干预"
+                                        "Maximum auto recovery attempts reached, manual intervention required"
                                     ).await;
 
-                                // 更新系统状态为错误
+                                // Update system state为错误
                                 {
                                     let mut state = self.system_state.lock().await;
-                                    *state = SystemState::Error("达到最大恢复尝试次数".to_string());
+                                    *state = SystemState::Error("Maximum recovery attempts reached".to_string());
                                 }
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    error!("健康检查执行失败: {:?}", e);
+                    error!("Health check execution failed: {:?}", e);
                     consecutive_failures += 1;
                 }
             }
@@ -561,28 +563,28 @@ impl HighAvailabilityManager {
         Ok(())
     }
 
-    /// 重置恢复尝试计数
+    /// Reset recovery attempt counter
     pub async fn reset_recovery_attempts(&self) {
         let mut attempts = self.recovery_attempts.lock().await;
         *attempts = 0;
-        info!("恢复尝试计数已重置");
+        info!("Recovery attempt counter has been reset");
     }
 
-    /// 获取恢复尝试次数
+    /// Get recovery attempt count
     pub async fn get_recovery_attempts(&self) -> u32 {
         let attempts = self.recovery_attempts.lock().await;
         *attempts
     }
 
-    /// 获取配置
+    /// Get configuration
     pub fn get_config(&self) -> &HighAvailabilityConfig {
         &self.config
     }
 
-    /// 更新配置
+    /// Update configuration
     pub fn update_config(&mut self, config: HighAvailabilityConfig) {
         self.config = config;
-        info!("高可用性管理器配置已更新");
+        info!("High availability manager configuration updated");
     }
 }
 

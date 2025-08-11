@@ -1,9 +1,10 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 健康监控系统与mango-metrics指标系统的集成模块
+//! Health monitoring system integration module with mango-metrics
 //! 
-//! 这个模块提供了将mgo-core健康监控系统集成到mango-metrics指标系统的功能
+//! This module provides functionality to integrate the mgo-core health monitoring system 
+//! into the mango-metrics metrics system
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,32 +17,33 @@ use prometheus::{
 };
 use tracing::{warn, instrument};
 
-/// 健康监控指标集成器
+/// Health monitoring metrics integrator
 /// 
-/// 这个结构体提供了将健康监控系统的指标集成到现有prometheus指标系统的功能
+/// This struct provides functionality to integrate health monitoring system metrics 
+/// into the existing prometheus metrics system
 pub struct HealthMonitoringMetricsIntegrator {
     _registry: Arc<Registry>,
     
-    // 健康检查指标
+    // Health check metrics
     health_check_total: IntCounter,
     health_check_failures: IntCounter,
     health_check_duration: Histogram,
     health_score_gauge: IntGauge,
     
-    // 组件健康状态指标
+    // Component health status metrics
     component_health_status: IntGaugeVec,
     
-    // 攻击检测指标
+    // Attack detection metrics
     attack_detections_total: IntCounter,
     attack_indicators_active: IntGauge,
     attack_types_detected: IntCounterVec,
     attack_confidence_histogram: HistogramVec,
     
-    // 告警指标
+    // Alert metrics
     alerts_sent_total: IntCounterVec,
     alerts_failed_total: IntCounterVec,
     
-    // 恢复系统指标
+    // Recovery system metrics
     recovery_attempts_total: IntCounter,
     recovery_success_total: IntCounter,
     recovery_failure_total: IntCounter,

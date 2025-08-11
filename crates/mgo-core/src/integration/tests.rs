@@ -1,7 +1,7 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 高可用性系统集成测试
+//! High availability system integration tests
 
 #[cfg(test)]
 mod tests {
@@ -14,7 +14,7 @@ mod tests {
     use crate::test_utils::make_authority_test_utils;
     use crate::health_monitor::{HealthCheckConfig, AttackDetectionConfig, AlertConfig};
 
-    /// 创建测试环境
+    /// Create test environment
     async fn setup_test_environment() -> (
         Arc<AuthorityState>,
         Arc<CheckpointStore>,
@@ -25,7 +25,7 @@ mod tests {
         let authority_state = authority_test_utils.state;
         let checkpoint_store = authority_state.checkpoint_store.clone();
         
-        // 创建网络客户端（测试用）
+        // Create network client (for testing)
         let network_client = Arc::new(NetworkAuthorityClient::new(
             mango_network::client::connect(
                 authority_state
@@ -43,7 +43,7 @@ mod tests {
         (authority_state, checkpoint_store, network_client, registry)
     }
 
-    /// 测试高可用性管理器的基本创建和启动
+    /// Test basic creation and startup of high availability manager
     #[tokio::test]
     async fn test_high_availability_manager_creation() {
         let (authority_state, checkpoint_store, network_client, registry) = 

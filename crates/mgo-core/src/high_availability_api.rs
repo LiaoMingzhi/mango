@@ -1,9 +1,10 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 高可用性管理REST API接口
+//! High availability management REST API interface
 //! 
-//! 提供Web API接口用于管理高可用性系统，包括健康检查、恢复操作、配置管理等
+//! Provides Web API interface for managing high availability system, 
+//! including health checks, recovery operations, configuration management, etc.
 
 use std::sync::Arc;
 use anyhow::Result;
@@ -12,22 +13,22 @@ use tracing::{info, warn, error, instrument};
 
 use crate::integration::{HighAvailabilityManager, SystemState};
 
-/// 健康检查API响应
+/// Health check API response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheckResponse {
-    /// 整体健康状态
+    /// Overall health status
     pub overall_healthy: bool,
-    /// 健康分数 (0-100)
+    /// Health score (0-100)
     pub health_score: u8,
-    /// 共识系统健康
+    /// Consensus system health
     pub consensus_healthy: bool,
-    /// 网络健康
+    /// Network health
     pub network_healthy: bool,
-    /// 存储健康
+    /// Storage health
     pub storage_healthy: bool,
-    /// 执行引擎健康
+    /// Execution engine health
     pub execution_healthy: bool,
-    /// 错误详情
+    /// Error details
     pub error_details: Vec<String>,
     /// 检查时间戳
     pub timestamp: u64,

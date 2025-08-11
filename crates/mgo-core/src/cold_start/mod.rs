@@ -19,83 +19,83 @@ use crate::authority::AuthorityState;
 use crate::checkpoints::CheckpointStore;
 use crate::authority_client::NetworkAuthorityClient;
 
-/// 冷启动配置
+/// Cold start configuration
 #[derive(Debug, Clone)]
 pub struct ColdStartConfig {
-    /// 节点发现超时时间
+    /// Node discovery timeout
     pub discovery_timeout: Duration,
-    /// 状态同步超时时间
+    /// State sync timeout
     pub sync_timeout: Duration,
-    /// 共识重启超时时间
+    /// Consensus restart timeout
     pub consensus_restart_timeout: Duration,
-    /// 健康检查间隔
+    /// Health check interval
     pub health_check_interval: Duration,
-    /// 最大重试次数
+    /// Maximum retry attempts
     pub max_retry_attempts: u32,
-    /// 是否自动执行冷启动
+    /// Whether to automatically execute cold start
     pub auto_cold_start: bool,
 }
 
 impl Default for ColdStartConfig {
     fn default() -> Self {
         Self {
-            discovery_timeout: Duration::from_secs(60), // 1分钟
-            sync_timeout: Duration::from_secs(300), // 5分钟
-            consensus_restart_timeout: Duration::from_secs(120), // 2分钟
-            health_check_interval: Duration::from_secs(10), // 10秒
+            discovery_timeout: Duration::from_secs(60), // 1 minute
+            sync_timeout: Duration::from_secs(300), // 5 minutes
+            consensus_restart_timeout: Duration::from_secs(120), // 2 minutes
+            health_check_interval: Duration::from_secs(10), // 10 seconds
             max_retry_attempts: 3,
             auto_cold_start: false,
         }
     }
 }
 
-/// 冷启动结果
+/// Cold start result
 #[derive(Debug, Clone)]
 pub enum ColdStartResult {
-    /// 冷启动成功
+    /// Cold start successful
     Success {
         sync_source: AuthorityName,
         latest_checkpoint: CheckpointSequenceNumber,
         duration: Duration,
     },
-    /// 冷启动失败
+    /// Cold start failed
     Failed {
         error: String,
         phase: ColdStartPhase,
     },
-    /// 冷启动被取消
+    /// Cold start cancelled
     Cancelled,
 }
 
-/// 冷启动阶段
+/// Cold start phase
 #[derive(Debug, Clone)]
 pub enum ColdStartPhase {
-    /// 节点发现阶段
+    /// Node discovery phase
     NodeDiscovery,
-    /// 状态同步阶段
+    /// State sync phase
     StateSync,
-    /// 共识重启阶段
+    /// Consensus restart phase
     ConsensusRestart,
-    /// 网络验证阶段
+    /// Network verification phase
     NetworkVerification,
 }
 
-/// 冷启动错误类型
+/// Cold start error types
 #[derive(Debug, thiserror::Error)]
 pub enum ColdStartError {
-    #[error("未找到健康节点: 扫描了 {scanned_nodes} 个节点")]
+    #[error("No healthy nodes found: scanned {scanned_nodes} nodes")]
     NoHealthyNodesFound {
         scanned_nodes: usize,
     },
     
-    #[error("状态同步失败")]
+    #[error("State sync failed")]
     StateSyncFailed {
         #[source]
         source: anyhow::Error,
         phase: String,
     },
     
-    #[error("共识重启失败")]
+    #[error("Consensus restart failed")]
     ConsensusRestartFailed {
         #[source]
         source: anyhow::Error,

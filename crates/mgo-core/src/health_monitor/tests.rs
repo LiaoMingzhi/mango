@@ -1,7 +1,7 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 健康监控模块测试
+//! Health monitoring module tests
 
 #[cfg(test)]
 mod tests {
@@ -12,13 +12,13 @@ mod tests {
 
     use crate::test_utils::make_authority_test_utils;
 
-    /// 测试健康检查器基本功能
+    /// Test basic health checker functionality
     #[tokio::test]
     async fn test_health_checker_basic() {
-        // 设置测试环境
+        // Setup test environment
         let (authority_state, checkpoint_store) = setup_test_environment().await;
         
-        // 创建健康检查器
+        // Create health checker
         let config = HealthCheckConfig::default();
         let health_checker = HealthChecker::new(
             config,
@@ -26,14 +26,14 @@ mod tests {
             checkpoint_store,
         );
 
-        // 执行健康检查
+        // Execute health check
         let result = health_checker.check_node_health().await;
-        assert!(result.is_ok(), "健康检查应该成功: {:?}", result);
+        assert!(result.is_ok(), "Health check should succeed: {:?}", result);
 
         let health_status = result.unwrap();
         
-        // 验证健康状态结构
-        assert!(health_status.health_score() <= 100, "健康分数应该在0-100之间");
+        // Verify health status structure
+        assert!(health_status.health_score() <= 100, "Health score should be between 0-100");
         
         println!(
             "健康检查结果: 总分={}/100, 共识={}, 网络={}, 存储={}, 执行={}",
