@@ -1,13 +1,13 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
-//! 告警管理器模块
+//! Alert manager module
 //! 
-//! 负责管理和发送各种告警通知，包括：
-//! - 健康状态告警
-//! - 攻击检测告警
-//! - 系统异常告警
-//! - 性能监控告警
+//! Responsible for managing and sending various alert notifications, including:
+//! - Health status alerts
+//! - Attack detection alerts
+//! - System exception alerts
+//! - Performance monitoring alerts
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -17,23 +17,23 @@ use tracing::{info, warn, error, debug, instrument};
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 
-/// 告警级别
+/// Alert level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AlertLevel {
-    /// 信息级别 - 一般信息通知
+    /// Info level - General information notification
     Info,
-    /// 警告级别 - 需要关注但不紧急
+    /// Warning level - Requires attention but not urgent
     Warning,
-    /// 中等级别 - 需要及时处理
+    /// Medium level - Requires timely handling
     Medium,
-    /// 高级别 - 需要立即关注
+    /// High level - Requires immediate attention
     High,
-    /// 紧急级别 - 需要立即处理
+    /// Critical level - Requires immediate handling
     Critical,
 }
 
 impl AlertLevel {
-    /// 获取告警级别的数值表示 (1-5)
+    /// Get numeric representation of alert level (1-5)
     pub fn to_number(&self) -> u8 {
         match self {
             AlertLevel::Info => 1,
@@ -44,7 +44,7 @@ impl AlertLevel {
         }
     }
 
-    /// 从数值创建告警级别
+    /// Create alert level from numeric value
     pub fn from_number(level: u8) -> Self {
         match level {
             1 => AlertLevel::Info,
@@ -55,7 +55,7 @@ impl AlertLevel {
         }
     }
 
-    /// 判断是否为紧急告警
+    /// Check if it's an urgent alert
     pub fn is_urgent(&self) -> bool {
         matches!(self, AlertLevel::High | AlertLevel::Critical)
     }
@@ -64,74 +64,74 @@ impl AlertLevel {
 impl std::fmt::Display for AlertLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AlertLevel::Info => write!(f, "信息"),
-            AlertLevel::Warning => write!(f, "警告"),
-            AlertLevel::Medium => write!(f, "中等"),
-            AlertLevel::High => write!(f, "高"),
-            AlertLevel::Critical => write!(f, "紧急"),
+            AlertLevel::Info => write!(f, "Info"),
+            AlertLevel::Warning => write!(f, "Warning"),
+            AlertLevel::Medium => write!(f, "Medium"),
+            AlertLevel::High => write!(f, "High"),
+            AlertLevel::Critical => write!(f, "Critical"),
         }
     }
 }
 
-/// 告警通知方式
+/// Alert notification channel
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AlertChannel {
-    /// 日志记录
+    /// Log recording
     Log,
-    /// 控制台输出
+    /// Console output
     Console,
-    /// 文件输出
+    /// File output
     File(String),
-    /// 邮件通知 (邮箱地址)
+    /// Email notification (email address)
     Email(String),
-    /// Webhook通知 (URL)
+    /// Webhook notification (URL)
     Webhook(String),
-    /// 自定义通知
+    /// Custom notification
     Custom(String),
 }
 
 impl std::fmt::Display for AlertChannel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AlertChannel::Log => write!(f, "日志"),
-            AlertChannel::Console => write!(f, "控制台"),
-            AlertChannel::File(path) => write!(f, "文件: {}", path),
-            AlertChannel::Email(email) => write!(f, "邮件: {}", email),
+            AlertChannel::Log => write!(f, "Log"),
+            AlertChannel::Console => write!(f, "Console"),
+            AlertChannel::File(path) => write!(f, "File: {}", path),
+            AlertChannel::Email(email) => write!(f, "Email: {}", email),
             AlertChannel::Webhook(url) => write!(f, "Webhook: {}", url),
-            AlertChannel::Custom(name) => write!(f, "自定义: {}", name),
+            AlertChannel::Custom(name) => write!(f, "Custom: {}", name),
         }
     }
 }
 
-/// 告警消息
+/// Alert message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alert {
-    /// 告警ID
+    /// Alert ID
     pub id: String,
-    /// 告警级别
+    /// Alert level
     pub level: AlertLevel,
-    /// 告警标题
+    /// Alert title
     pub title: String,
-    /// 告警消息内容
+    /// Alert message content
     pub message: String,
-    /// 创建时间
+    /// Creation time
     pub created_at: SystemTime,
-    /// 发送时间
+    /// Send time
     pub sent_at: Option<SystemTime>,
-    /// 告警源
+    /// Alert source
     pub source: String,
-    /// 附加元数据
+    /// Additional metadata
     pub metadata: HashMap<String, String>,
-    /// 是否已处理
+    /// Whether acknowledged
     pub acknowledged: bool,
-    /// 处理时间
+    /// Acknowledgment time
     pub acknowledged_at: Option<SystemTime>,
-    /// 重试次数
+    /// Retry count
     pub retry_count: u32,
 }
 
 impl Alert {
-    /// 创建新的告警
+    /// Create new alert
     pub fn new(
         level: AlertLevel,
         title: String,
@@ -156,7 +156,7 @@ impl Alert {
         }
     }
 
-    /// 生成告警ID
+    /// Generate alert ID
     fn generate_alert_id(level: &AlertLevel, timestamp: &SystemTime) -> String {
         let time_str = timestamp
             .duration_since(UNIX_EPOCH)
@@ -165,29 +165,29 @@ impl Alert {
         format!("alert_{}_{}", level.to_number(), time_str)
     }
 
-    /// 添加元数据
+    /// Add metadata
     pub fn with_metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
         self
     }
 
-    /// 标记为已发送
+    /// Mark as sent
     pub fn mark_sent(&mut self) {
         self.sent_at = Some(SystemTime::now());
     }
 
-    /// 标记为已处理
+    /// Mark as acknowledged
     pub fn acknowledge(&mut self) {
         self.acknowledged = true;
         self.acknowledged_at = Some(SystemTime::now());
     }
 
-    /// 增加重试次数
+    /// Increment retry count
     pub fn increment_retry(&mut self) {
         self.retry_count += 1;
     }
 
-    /// 获取告警年龄（从创建到现在的时间）
+    /// Get alert age (time from creation to now)
     pub fn age(&self) -> Duration {
         SystemTime::now()
             .duration_since(self.created_at)
@@ -195,26 +195,26 @@ impl Alert {
     }
 }
 
-/// 告警配置
+/// Alert configuration
 #[derive(Debug, Clone)]
 pub struct AlertConfig {
-    /// 启用的告警通道
+    /// Enabled alert channels
     pub enabled_channels: Vec<AlertChannel>,
-    /// 最小告警级别
+    /// Minimum alert level
     pub min_alert_level: AlertLevel,
-    /// 最大重试次数
+    /// Maximum retry attempts
     pub max_retry_attempts: u32,
-    /// 重试间隔
+    /// Retry interval
     pub retry_interval: Duration,
-    /// 告警去重时间窗口
+    /// Alert deduplication time window
     pub deduplication_window: Duration,
-    /// 最大告警历史记录数
+    /// Maximum alert history records
     pub max_alert_history: usize,
-    /// 告警超时时间
+    /// Alert timeout duration
     pub alert_timeout: Duration,
-    /// 是否启用告警聚合
+    /// Whether to enable alert aggregation
     pub enable_aggregation: bool,
-    /// 聚合时间窗口
+    /// Aggregation time window
     pub aggregation_window: Duration,
 }
 
@@ -225,7 +225,7 @@ impl Default for AlertConfig {
             min_alert_level: AlertLevel::Warning,
             max_retry_attempts: 3,
             retry_interval: Duration::from_secs(30),
-            deduplication_window: Duration::from_secs(300), // 5分钟
+            deduplication_window: Duration::from_secs(300), // 5 minutes
             max_alert_history: 1000,
             alert_timeout: Duration::from_secs(60),
             enable_aggregation: false,
@@ -234,20 +234,20 @@ impl Default for AlertConfig {
     }
 }
 
-/// 告警统计信息
+/// Alert statistics
 #[derive(Debug, Clone)]
 pub struct AlertStats {
-    /// 总告警数
+    /// Total alerts count
     pub total_alerts: u64,
-    /// 成功发送数
+    /// Successful sends count
     pub successful_sends: u64,
-    /// 失败发送数
+    /// Failed sends count
     pub failed_sends: u64,
-    /// 已处理告警数
+    /// Acknowledged alerts count
     pub acknowledged_alerts: u64,
-    /// 按级别分组的告警数
+    /// Alert count grouped by level
     pub alerts_by_level: HashMap<AlertLevel, u64>,
-    /// 按通道分组的发送数
+    /// Send count grouped by channel
     pub sends_by_channel: HashMap<AlertChannel, u64>,
 }
 
@@ -264,13 +264,13 @@ impl Default for AlertStats {
     }
 }
 
-/// 告警管理器
+/// Alert manager
 /// 
-/// 负责管理告警的生命周期，包括：
-/// - 接收和分类告警
-/// - 发送告警通知
-/// - 管理告警历史
-/// - 统计告警信息
+/// Responsible for managing the alert lifecycle, including:
+/// - Receiving and categorizing alerts
+/// - Sending alert notifications
+/// - Managing alert history
+/// - Statistics of alert information
 pub struct AlertManager {
     config: AlertConfig,
     alert_history: Arc<Mutex<VecDeque<Alert>>>,
@@ -280,7 +280,7 @@ pub struct AlertManager {
 }
 
 impl AlertManager {
-    /// 创建新的告警管理器
+    /// Create new alert manager
     pub fn new(config: AlertConfig) -> Self {
         Self {
             config,
@@ -291,53 +291,53 @@ impl AlertManager {
         }
     }
 
-    /// 启动告警管理器
+    /// Start alert manager
     #[instrument(level = "info", skip(self))]
     pub async fn start(&self) -> Result<()> {
-        info!("启动告警管理器");
+        info!("Starting alert manager");
         
-        // 重置停止信号
+        // Reset stop signal
         {
             let mut stop_signal = self.stop_signal.lock().await;
             *stop_signal = false;
         }
 
-        // 启动告警处理循环
+        // Start alert processing loop
         let manager = self.clone();
         tokio::spawn(async move {
             if let Err(e) = manager.run_alert_processing_loop().await {
-                error!("告警处理循环运行失败: {:?}", e);
+                error!("Alert processing loop failed: {:?}", e);
             }
         });
 
-        info!("告警管理器启动成功");
+        info!("Alert manager started successfully");
         Ok(())
     }
 
-    /// 停止告警管理器
+    /// Stop alert manager
     #[instrument(level = "info", skip(self))]
     pub async fn stop(&self) -> Result<()> {
-        info!("停止告警管理器");
+        info!("Stopping alert manager");
         
-        // 设置停止信号
+        // Set stop signal
         {
             let mut stop_signal = self.stop_signal.lock().await;
             *stop_signal = true;
         }
 
-        // 等待处理完剩余的告警
+        // Wait for remaining alerts to be processed
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        info!("告警管理器已停止");
+        info!("Alert manager stopped");
         Ok(())
     }
 
-    /// 发送告警
+    /// Send alert
     #[instrument(level = "debug", skip(self))]
     pub async fn send_alert(&self, level: AlertLevel, message: &str) -> Result<String> {
-        // 检查告警级别是否满足最小要求
+        // Check if alert level meets minimum requirement
         if level.to_number() < self.config.min_alert_level.to_number() {
-            debug!("告警级别过低，跳过发送: {} < {}", level, self.config.min_alert_level);
+            debug!("Alert level too low, skipping send: {} < {}", level, self.config.min_alert_level);
             return Ok("skipped".to_string());
         }
 
@@ -350,30 +350,30 @@ impl AlertManager {
 
         let alert_id = alert.id.clone();
 
-        // 检查是否需要去重
+        // Check if deduplication is needed
         if self.should_deduplicate(&alert).await? {
-            debug!("告警被去重，跳过发送: {}", alert_id);
+            debug!("Alert deduplicated, skipping send: {}", alert_id);
             return Ok("deduplicated".to_string());
         }
 
-        // 将告警添加到待处理队列
+        // Add alert to pending queue
         {
             let mut pending = self.pending_alerts.lock().await;
             pending.push_back(alert.clone());
         }
 
-        // 更新统计信息
+        // Update statistics
         {
             let mut stats = self.stats.lock().await;
             stats.total_alerts += 1;
             *stats.alerts_by_level.entry(level).or_insert(0) += 1;
         }
 
-        info!("告警已创建: [{}] {}", level, message);
+        info!("Alert created: [{}] {}", level, message);
         Ok(alert_id)
     }
 
-    /// 创建带元数据的告警
+    /// Create alert with metadata
     pub async fn send_alert_with_metadata(
         &self,
         level: AlertLevel,
@@ -387,41 +387,41 @@ impl AlertManager {
             "health_monitor".to_string(),
         );
 
-        // 添加元数据
+        // Add metadata
         for (key, value) in metadata {
             alert = alert.with_metadata(key, value);
         }
 
         let alert_id = alert.id.clone();
 
-        // 检查告警级别
+        // Check alert level
         if level.to_number() < self.config.min_alert_level.to_number() {
             return Ok("skipped".to_string());
         }
 
-        // 检查去重
+        // Check deduplication
         if self.should_deduplicate(&alert).await? {
             return Ok("deduplicated".to_string());
         }
 
-        // 添加到待处理队列
+        // Add to pending queue
         {
             let mut pending = self.pending_alerts.lock().await;
             pending.push_back(alert);
         }
 
-        // 更新统计信息
+        // Update statistics
         {
             let mut stats = self.stats.lock().await;
             stats.total_alerts += 1;
             *stats.alerts_by_level.entry(level).or_insert(0) += 1;
         }
 
-        info!("带元数据的告警已创建: [{}] {}", level, message);
+        info!("Alert with metadata created: [{}] {}", level, message);
         Ok(alert_id)
     }
 
-    /// 获取告警历史
+    /// Get alert history
     pub async fn get_alert_history(&self, limit: Option<usize>) -> Vec<Alert> {
         let history = self.alert_history.lock().await;
         
@@ -438,19 +438,19 @@ impl AlertManager {
         }
     }
 
-    /// 获取待处理告警
+    /// Get pending alerts
     pub async fn get_pending_alerts(&self) -> Vec<Alert> {
         let pending = self.pending_alerts.lock().await;
         pending.iter().cloned().collect()
     }
 
-    /// 获取告警统计信息
+    /// Get alert statistics
     pub async fn get_stats(&self) -> AlertStats {
         let stats = self.stats.lock().await;
         stats.clone()
     }
 
-    /// 确认告警
+    /// Acknowledge alert
     pub async fn acknowledge_alert(&self, alert_id: &str) -> Result<()> {
         let mut history = self.alert_history.lock().await;
         
@@ -458,53 +458,53 @@ impl AlertManager {
             if alert.id == alert_id {
                 alert.acknowledge();
                 
-                // 更新统计信息
+                // Update statistics
                 drop(history);
                 let mut stats = self.stats.lock().await;
                 stats.acknowledged_alerts += 1;
                 
-                info!("告警已确认: {}", alert_id);
+                info!("Alert acknowledged: {}", alert_id);
                 return Ok(());
             }
         }
         
-        Err(anyhow!("未找到告警: {}", alert_id))
+        Err(anyhow!("Alert not found: {}", alert_id))
     }
 
-    /// 清除告警历史
+    /// Clear alert history
     pub async fn clear_history(&self) -> Result<()> {
         let mut history = self.alert_history.lock().await;
         history.clear();
-        info!("告警历史已清除");
+        info!("Alert history cleared");
         Ok(())
     }
 
-    /// 告警处理主循环
+    /// Alert processing main loop
     async fn run_alert_processing_loop(&self) -> Result<()> {
-        info!("开始告警处理循环");
+        info!("Starting alert processing loop");
         
         loop {
-            // 检查停止信号
+            // Check stop signal
             {
                 let stop_signal = self.stop_signal.lock().await;
                 if *stop_signal {
-                    info!("收到停止信号，退出告警处理循环");
+                    info!("Received stop signal, exiting alert processing loop");
                     break;
                 }
             }
 
-            // 处理待发送的告警
+            // Process pending alerts
             self.process_pending_alerts().await?;
 
-            // 等待下次处理
+            // Wait for next processing
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
-        info!("告警处理循环已结束");
+        info!("Alert processing loop ended");
         Ok(())
     }
 
-    /// 处理待发送的告警
+    /// Process pending alerts
     async fn process_pending_alerts(&self) -> Result<()> {
         let alert = {
             let mut pending = self.pending_alerts.lock().await;
@@ -512,49 +512,49 @@ impl AlertManager {
         };
 
         if let Some(mut alert) = alert {
-            // 尝试发送告警
+            // Try to send alert
             let send_result = self.send_alert_to_channels(&alert).await;
             
             match send_result {
                 Ok(()) => {
                     alert.mark_sent();
                     
-                    // 更新统计信息
+                    // Update statistics
                     {
                         let mut stats = self.stats.lock().await;
                         stats.successful_sends += 1;
                     }
                     
-                    debug!("告警发送成功: {}", alert.id);
+                    debug!("Alert sent successfully: {}", alert.id);
                 }
                 Err(e) => {
                     alert.increment_retry();
                     
-                    // 检查是否需要重试
+                    // Check if retry is needed
                     if alert.retry_count < self.config.max_retry_attempts {
-                        // 重新加入待处理队列
+                        // Re-add to pending queue
                         let mut pending = self.pending_alerts.lock().await;
                         pending.push_back(alert.clone());
                         
-                        warn!("告警发送失败，将重试: {} (重试次数: {})", alert.id, alert.retry_count);
+                        warn!("Alert send failed, will retry: {} (retry count: {})", alert.id, alert.retry_count);
                     } else {
-                        // 更新统计信息
+                        // Update statistics
                         {
                             let mut stats = self.stats.lock().await;
                             stats.failed_sends += 1;
                         }
                         
-                        error!("告警发送失败，已达到最大重试次数: {} - {:?}", alert.id, e);
+                        error!("Alert send failed, reached maximum retry attempts: {} - {:?}", alert.id, e);
                     }
                 }
             }
 
-            // 将告警添加到历史记录
+            // Add alert to history
             {
                 let mut history = self.alert_history.lock().await;
                 history.push_back(alert);
                 
-                // 限制历史记录数量
+                // Limit history record count
                 while history.len() > self.config.max_alert_history {
                     history.pop_front();
                 }
@@ -564,14 +564,14 @@ impl AlertManager {
         Ok(())
     }
 
-    /// 发送告警到所有配置的通道
+    /// Send alert to all configured channels
     async fn send_alert_to_channels(&self, alert: &Alert) -> Result<()> {
         for channel in &self.config.enabled_channels {
             if let Err(e) = self.send_to_channel(alert, channel).await {
-                error!("发送告警到通道 {} 失败: {:?}", channel, e);
-                // 继续尝试其他通道
+                error!("Failed to send alert to channel {}: {:?}", channel, e);
+                // Continue trying other channels
             } else {
-                // 更新统计信息
+                // Update statistics
                 let mut stats = self.stats.lock().await;
                 *stats.sends_by_channel.entry(channel.clone()).or_insert(0) += 1;
             }
@@ -579,53 +579,53 @@ impl AlertManager {
         Ok(())
     }
 
-    /// 发送告警到特定通道
+    /// Send alert to specific channel
     async fn send_to_channel(&self, alert: &Alert, channel: &AlertChannel) -> Result<()> {
         match channel {
             AlertChannel::Log => {
                 match alert.level {
-                    AlertLevel::Info => info!("[告警] {}: {}", alert.title, alert.message),
-                    AlertLevel::Warning => warn!("[告警] {}: {}", alert.title, alert.message),
-                    AlertLevel::Medium => warn!("[告警] {}: {}", alert.title, alert.message),
-                    AlertLevel::High => error!("[告警] {}: {}", alert.title, alert.message),
-                    AlertLevel::Critical => error!("[紧急告警] {}: {}", alert.title, alert.message),
+                    AlertLevel::Info => info!("[Alert] {}: {}", alert.title, alert.message),
+                    AlertLevel::Warning => warn!("[Alert] {}: {}", alert.title, alert.message),
+                    AlertLevel::Medium => warn!("[Alert] {}: {}", alert.title, alert.message),
+                    AlertLevel::High => error!("[Alert] {}: {}", alert.title, alert.message),
+                    AlertLevel::Critical => error!("[Critical Alert] {}: {}", alert.title, alert.message),
                 }
             }
             AlertChannel::Console => {
                 println!("[{}] {}: {}", alert.level, alert.title, alert.message);
             }
             AlertChannel::File(path) => {
-                // 这里应该实现文件写入逻辑
-                debug!("将告警写入文件: {} - {}", path, alert.message);
+                // File writing logic should be implemented here
+                debug!("Writing alert to file: {} - {}", path, alert.message);
             }
             AlertChannel::Email(_email) => {
-                // 这里应该实现邮件发送逻辑
-                debug!("发送邮件告警: {}", alert.message);
+                // Email sending logic should be implemented here
+                debug!("Sending email alert: {}", alert.message);
             }
             AlertChannel::Webhook(_url) => {
-                // 这里应该实现Webhook发送逻辑
-                debug!("发送Webhook告警: {}", alert.message);
+                // Webhook sending logic should be implemented here
+                debug!("Sending webhook alert: {}", alert.message);
             }
             AlertChannel::Custom(name) => {
-                debug!("发送自定义告警到 {}: {}", name, alert.message);
+                debug!("Sending custom alert to {}: {}", name, alert.message);
             }
         }
         Ok(())
     }
 
-    /// 检查是否应该去重此告警
+    /// Check if this alert should be deduplicated
     async fn should_deduplicate(&self, alert: &Alert) -> Result<bool> {
         let history = self.alert_history.lock().await;
         let now = SystemTime::now();
         
         for existing_alert in history.iter().rev() {
-            // 检查时间窗口
+            // Check time window
             if now.duration_since(existing_alert.created_at).unwrap_or_default() 
                 > self.config.deduplication_window {
                 break;
             }
             
-            // 检查是否为相同的告警
+            // Check if it's the same alert
             if existing_alert.level == alert.level 
                 && existing_alert.message == alert.message 
                 && existing_alert.source == alert.source {
@@ -636,28 +636,28 @@ impl AlertManager {
         Ok(false)
     }
 
-    /// 生成告警标题
+    /// Generate alert title
     fn generate_alert_title(&self, level: AlertLevel, message: &str) -> String {
         let prefix = match level {
-            AlertLevel::Info => "信息",
-            AlertLevel::Warning => "警告",
-            AlertLevel::Medium => "中等告警",
-            AlertLevel::High => "高级告警",
-            AlertLevel::Critical => "紧急告警",
+            AlertLevel::Info => "Info",
+            AlertLevel::Warning => "Warning",
+            AlertLevel::Medium => "Medium Alert",
+            AlertLevel::High => "High Alert",
+            AlertLevel::Critical => "Critical Alert",
         };
         
         format!("{}: {}", prefix, message.chars().take(50).collect::<String>())
     }
 
-    /// 获取告警配置
+    /// Get alert configuration
     pub fn get_config(&self) -> &AlertConfig {
         &self.config
     }
 
-    /// 更新告警配置
+    /// Update alert configuration
     pub fn update_config(&mut self, config: AlertConfig) {
         self.config = config;
-        info!("告警管理器配置已更新");
+        info!("Alert manager configuration updated");
     }
 }
 

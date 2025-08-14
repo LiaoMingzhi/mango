@@ -483,13 +483,13 @@ impl HighAvailabilityManager {
                             if current_attempts < self.config.max_recovery_attempts {
                                 info!("Triggering auto recovery (attempt {}/{})", current_attempts + 1, self.config.max_recovery_attempts);
                                 
-                                // Update system state为恢复中
+                                // Update system state to recovering
                                 {
                                     let mut state = self.system_state.lock().await;
                                     *state = SystemState::Recovering;
                                 }
 
-                                // 分析并执行恢复策略
+                                // Analyze and execute recovery strategy
                                 let strategy = self.analyze_recovery_strategy(&health_status).await;
                                 info!("Selected recovery strategy: {:?}", strategy);
 
@@ -504,17 +504,17 @@ impl HighAvailabilityManager {
                                             *attempts = 0;
                                         }
                                     }
-                                    Err(e) => {
+                                                                        Err(e) => {
                                         error!("Auto recovery execution failed: {:?}", e);
                                         
-                                        // 增加恢复尝试计数
+                                        // Increase recovery attempt counter
                                         {
                                             let mut attempts = self.recovery_attempts.lock().await;
                                             *attempts += 1;
                                         }
 
-                                        // 发送紧急告警
-                                                                        let _ = self.health_monitor.get_alert_manager()
+                                        // Send critical alert
+                                        let _ = self.health_monitor.get_alert_manager()
                                             .send_alert(
                                                 AlertLevel::Critical,
                                                 &format!("Auto recovery failed: {:?}", e)
@@ -522,25 +522,25 @@ impl HighAvailabilityManager {
                                     }
                                 }
 
-                                // 更新最后恢复时间
+                                // Update last recovery time
                                 {
                                     let mut last_recovery = self.last_recovery_time.lock().await;
                                     *last_recovery = Some(std::time::Instant::now());
                                 }
                             } else {
                                 error!(
-                                    "已达到最大恢复尝试次数 ({}), 停止自动恢复",
+                                    "Maximum recovery attempts reached ({}), stopping auto recovery",
                                     self.config.max_recovery_attempts
                                 );
                                 
-                                // 发送紧急告警
+                                // Send critical alert
                                 let _ = self.health_monitor.get_alert_manager()
                                     .send_alert(
                                         AlertLevel::Critical,
                                         "Maximum auto recovery attempts reached, manual intervention required"
                                     ).await;
 
-                                // Update system state为错误
+                                // Update system state to error
                                 {
                                     let mut state = self.system_state.lock().await;
                                     *state = SystemState::Error("Maximum recovery attempts reached".to_string());
@@ -555,11 +555,11 @@ impl HighAvailabilityManager {
                 }
             }
 
-            // 等待下次检查
+            // Wait for next check
             tokio::time::sleep(self.config.monitor.monitor_interval).await;
         }
 
-        info!("自动恢复监控循环已结束");
+        info!("Auto recovery monitoring loop ended");
         Ok(())
     }
 

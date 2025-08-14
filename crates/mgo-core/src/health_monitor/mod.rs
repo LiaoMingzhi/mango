@@ -51,46 +51,46 @@ impl Default for HealthMetrics {
         Self {
             health_checks_total: register_int_counter!(
                 "mgo_health_checks_total",
-                "健康检查总次数"
+                "Total number of health checks"
             ).unwrap(),
             health_check_failures_total: register_int_counter!(
                 "mgo_health_check_failures_total", 
-                "健康检查失败次数"
+                "Total number of failed health checks"
             ).unwrap(),
             current_health_status: register_int_gauge!(
                 "mgo_current_health_status",
-                "当前健康状态 (1: 健康, 0: 不健康)"
+                "Current health status (1: healthy, 0: unhealthy)"
             ).unwrap(),
             attack_detections_total: register_int_counter!(
                 "mgo_attack_detections_total",
-                "攻击检测总次数"
+                "Total number of attack detections"
             ).unwrap(),
             active_attack_indicators: register_int_gauge!(
                 "mgo_active_attack_indicators",
-                "当前攻击指标数量"
+                "Number of active attack indicators"
             ).unwrap(),
             health_check_duration: register_histogram!(
                 "mgo_health_check_duration_seconds",
-                "健康检查耗时（秒）"
+                "Health check duration (seconds)"
             ).unwrap(),
             alerts_sent_total: register_int_counter!(
                 "mgo_alerts_sent_total",
-                "告警发送总次数"
+                "Total number of alerts sent"
             ).unwrap(),
         }
     }
 }
 
-/// 监控配置
+/// Monitor configuration
 #[derive(Debug, Clone)]
 pub struct MonitorConfig {
-    /// 健康检查配置
+    /// Health check configuration
     pub health_check: HealthCheckConfig,
-    /// 告警配置
+    /// Alert configuration
     pub alert: AlertConfig,
-    /// 监控间隔
+    /// Monitor interval
     pub monitor_interval: Duration,
-    /// 是否启用攻击检测
+    /// Whether to enable attack detection
     pub enable_attack_detection: bool,
 }
 
@@ -105,30 +105,30 @@ impl Default for MonitorConfig {
     }
 }
 
-/// 监控状态
+/// Monitor state
 #[derive(Debug, Clone)]
 pub enum MonitorState {
-    /// 启动中
+    /// Starting
     Starting,
-    /// 运行中
+    /// Running
     Running,
-    /// 暂停中
+    /// Paused
     Paused,
-    /// 停止中
+    /// Stopping
     Stopping,
-    /// 已停止
+    /// Stopped
     Stopped,
-    /// 异常状态
+    /// Error state
     Error(String),
 }
 
-/// 健康监控管理器
+/// Health monitor manager
 /// 
-/// 这是健康监控系统的主要协调器，负责：
-/// - 定期执行健康检查
-/// - 检测攻击迹象
-/// - 发送告警通知
-/// - 维护监控状态
+/// This is the main coordinator of the health monitoring system, responsible for:
+/// - Performing regular health checks
+/// - Detecting attack signs
+/// - Sending alert notifications
+/// - Maintaining monitoring state
 pub struct HealthMonitor {
     config: MonitorConfig,
     health_checker: Arc<HealthChecker>,
@@ -140,7 +140,7 @@ pub struct HealthMonitor {
 }
 
 impl HealthMonitor {
-    /// 创建新的健康监控管理器
+    /// Create new health monitor manager
     pub fn new(
         config: MonitorConfig,
         health_checker: Arc<HealthChecker>,
@@ -159,114 +159,114 @@ impl HealthMonitor {
         }
     }
 
-    /// 启动健康监控
+    /// Start health monitoring
     #[instrument(level = "info", skip(self))]
     pub async fn start(&self) -> Result<()> {
-        info!("启动健康监控系统");
+        info!("Starting health monitoring system");
         
-        // 更新状态
+        // Update state
         {
             let mut state = self.state.lock().await;
             *state = MonitorState::Starting;
         }
 
-        // 重置停止信号
+        // Reset stop signal
         {
             let mut stop_signal = self.stop_signal.lock().await;
             *stop_signal = false;
         }
 
-        // 启动监控循环
+        // Start monitoring loop
         let monitor = Arc::new(self.clone());
         tokio::spawn(async move {
             if let Err(e) = monitor.run_monitor_loop().await {
-                error!("健康监控运行失败: {:?}", e);
+                error!("Health monitoring failed: {:?}", e);
                 let mut state = monitor.state.lock().await;
                 *state = MonitorState::Error(format!("{:?}", e));
             }
         });
 
-        // 更新状态为运行中
+        // Update state to running
         {
             let mut state = self.state.lock().await;
             *state = MonitorState::Running;
         }
 
-        info!("健康监控系统启动成功");
+        info!("Health monitoring system started successfully");
         Ok(())
     }
 
-    /// 停止健康监控
+    /// Stop health monitoring
     #[instrument(level = "info", skip(self))]
     pub async fn stop(&self) -> Result<()> {
-        info!("停止健康监控系统");
+        info!("Stopping health monitoring system");
         
-        // 设置停止信号
+        // Set stop signal
         {
             let mut stop_signal = self.stop_signal.lock().await;
             *stop_signal = true;
         }
 
-        // 更新状态
+        // Update state
         {
             let mut state = self.state.lock().await;
             *state = MonitorState::Stopping;
         }
 
-        // 等待监控循环结束
+        // Wait for monitoring loop to end
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // 更新状态为已停止
+        // Update state to stopped
         {
             let mut state = self.state.lock().await;
             *state = MonitorState::Stopped;
         }
 
-        info!("健康监控系统已停止");
+        info!("Health monitoring system stopped");
         Ok(())
     }
 
-    /// 获取当前监控状态
+    /// Get current monitoring state
     pub async fn get_state(&self) -> MonitorState {
         let state = self.state.lock().await;
         state.clone()
     }
 
-    /// 暂停监控
+    /// Pause monitoring
     pub async fn pause(&self) -> Result<()> {
         let mut state = self.state.lock().await;
         match *state {
             MonitorState::Running => {
                 *state = MonitorState::Paused;
-                info!("健康监控已暂停");
+                info!("Health monitoring paused");
                 Ok(())
             }
-            _ => Err(anyhow!("只能在运行状态下暂停监控")),
+            _ => Err(anyhow!("Can only pause monitoring when running")),
         }
     }
 
-    /// 恢复监控
+    /// Resume monitoring
     pub async fn resume(&self) -> Result<()> {
         let mut state = self.state.lock().await;
         match *state {
             MonitorState::Paused => {
                 *state = MonitorState::Running;
-                info!("健康监控已恢复");
+                info!("Health monitoring resumed");
                 Ok(())
             }
-            _ => Err(anyhow!("只能在暂停状态下恢复监控")),
+            _ => Err(anyhow!("Can only resume monitoring when paused")),
         }
     }
 
-    /// 执行一次完整的健康检查和攻击检测
+    /// Perform a complete health check and attack detection
     #[instrument(level = "debug", skip(self))]
     pub async fn perform_health_check(&self) -> Result<HealthStatus> {
         let start_time = Instant::now();
         
-        // 执行健康检查
+        // Execute health check
         let health_status = self.health_checker.check_node_health().await?;
         
-        // 更新指标
+        // Update metrics
         self.metrics.health_checks_total.inc();
         if !health_status.is_healthy() {
             self.metrics.health_check_failures_total.inc();
@@ -278,20 +278,20 @@ impl HealthMonitor {
         self.metrics.health_check_duration
             .observe(start_time.elapsed().as_secs_f64());
 
-        // 如果启用了攻击检测，执行攻击检测
+        // If attack detection is enabled, perform attack detection
         if self.config.enable_attack_detection {
             if let Ok(indicators) = self.attack_detector.detect_attack_signs().await {
                 self.metrics.attack_detections_total.inc();
                 self.metrics.active_attack_indicators.set(indicators.len() as i64);
                 
-                // 如果检测到攻击迹象，发送告警
+                // If attack signs detected, send alerts
                 if !indicators.is_empty() {
                     self.send_attack_alerts(&indicators).await?;
                 }
             }
         }
 
-        // 如果健康状态异常，发送健康告警
+        // If health status is abnormal, send health alert
         if !health_status.is_healthy() {
             self.send_health_alert(&health_status).await?;
         }
@@ -299,21 +299,21 @@ impl HealthMonitor {
         Ok(health_status)
     }
 
-    /// 监控主循环
+    /// Monitor main loop
     async fn run_monitor_loop(&self) -> Result<()> {
-        info!("开始健康监控主循环");
+        info!("Starting health monitoring main loop");
         
         loop {
-            // 检查停止信号
+            // Check stop signal
             {
                 let stop_signal = self.stop_signal.lock().await;
                 if *stop_signal {
-                    info!("收到停止信号，退出监控循环");
+                    info!("Received stop signal, exiting monitor loop");
                     break;
                 }
             }
 
-            // 检查状态，只在运行状态下执行监控
+            // Check state, only execute monitoring when running
             {
                 let state = self.state.lock().await;
                 if !matches!(*state, MonitorState::Running) {
@@ -322,20 +322,20 @@ impl HealthMonitor {
                 }
             }
 
-            // 执行健康检查
+            // Execute health check
             if let Err(e) = self.perform_health_check().await {
-                error!("健康检查失败: {:?}", e);
+                error!("Health check failed: {:?}", e);
             }
 
-            // 等待下次检查
+            // Wait for next check
             tokio::time::sleep(self.config.monitor_interval).await;
         }
 
-        info!("健康监控主循环已结束");
+        info!("Health monitoring main loop ended");
         Ok(())
     }
 
-    /// 发送攻击告警
+    /// Send attack alerts
     async fn send_attack_alerts(&self, indicators: &[AttackIndicator]) -> Result<()> {
         for indicator in indicators {
             let alert_level = match indicator.attack_type {
@@ -347,7 +347,7 @@ impl HealthMonitor {
             };
 
             let message = format!(
-                "检测到攻击迹象: {} - {} (置信度: {:.2})",
+                "Attack signs detected: {} - {} (confidence: {:.2})",
                 indicator.attack_type,
                 indicator.description,
                 indicator.confidence
@@ -359,10 +359,10 @@ impl HealthMonitor {
         Ok(())
     }
 
-    /// 发送健康告警
+    /// Send health alert
     async fn send_health_alert(&self, health_status: &HealthStatus) -> Result<()> {
         let message = format!(
-            "节点健康检查失败: 共识健康={}, 网络健康={}, 存储健康={}, 执行健康={}",
+            "Node health check failed: consensus_healthy={}, network_healthy={}, storage_healthy={}, execution_healthy={}",
             health_status.consensus_healthy,
             health_status.network_healthy,
             health_status.storage_healthy,
@@ -375,25 +375,25 @@ impl HealthMonitor {
         Ok(())
     }
 
-    /// 获取攻击检测器
+    /// Get attack detector
     pub fn get_attack_detector(&self) -> &AttackDetector {
         &self.attack_detector
     }
 
-    /// 获取告警管理器
+    /// Get alert manager
     pub fn get_alert_manager(&self) -> &AlertManager {
         &self.alert_manager
     }
 
-    /// 获取配置
+    /// Get configuration
     pub fn get_config(&self) -> &MonitorConfig {
         &self.config
     }
 
-    /// 更新配置
+    /// Update configuration
     pub fn update_config(&mut self, config: MonitorConfig) {
         self.config = config;
-        info!("健康监控配置已更新");
+        info!("Health monitor configuration updated");
     }
 }
 

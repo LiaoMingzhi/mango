@@ -36,7 +36,7 @@ mod tests {
         assert!(health_status.health_score() <= 100, "Health score should be between 0-100");
         
         println!(
-            "健康检查结果: 总分={}/100, 共识={}, 网络={}, 存储={}, 执行={}",
+            "Health check result: score={}/100, consensus={}, network={}, storage={}, execution={}",
             health_status.health_score(),
             health_status.consensus_healthy,
             health_status.network_healthy,
@@ -45,12 +45,12 @@ mod tests {
         );
     }
 
-    /// 测试攻击检测器基本功能
+    /// Test attack detector basic functionality
     #[tokio::test]
     async fn test_attack_detector_basic() {
         let (authority_state, checkpoint_store) = setup_test_environment().await;
         
-        // 创建攻击检测器
+        // Create attack detector
         let config = AttackDetectionConfig::default();
         let attack_detector = AttackDetector::new(
             config,
@@ -58,74 +58,74 @@ mod tests {
             checkpoint_store,
         );
 
-        // 执行攻击检测
+        // Execute attack detection
         let result = attack_detector.detect_attack_signs().await;
-        assert!(result.is_ok(), "攻击检测应该成功: {:?}", result);
+        assert!(result.is_ok(), "Attack detection should succeed: {:?}", result);
 
         let indicators = result.unwrap();
         
-        println!("检测到 {} 个攻击指标", indicators.len());
+        println!("Detected {} attack indicators", indicators.len());
         
         for indicator in &indicators {
             println!(
-                "攻击指标: {} - {} (置信度: {:.2})",
+                "Attack indicator: {} - {} (confidence: {:.2})",
                 indicator.attack_type,
                 indicator.description,
                 indicator.confidence
             );
         }
 
-        // 获取检测统计信息
+        // Get detection statistics
         let stats = attack_detector.get_detection_stats().await;
-        assert!(stats.detection_count > 0, "检测次数应该大于0");
+        assert!(stats.detection_count > 0, "Detection count should be greater than 0");
     }
 
-    /// 测试告警管理器基本功能
+    /// Test alert manager basic functionality
     #[tokio::test]
     async fn test_alert_manager_basic() {
-        // 创建告警管理器
+        // Create alert manager
         let config = AlertConfig::default();
         let alert_manager = AlertManager::new(config);
 
-        // 启动告警管理器
+        // Start alert manager
         let start_result = alert_manager.start().await;
-        assert!(start_result.is_ok(), "告警管理器启动应该成功");
+        assert!(start_result.is_ok(), "Alert manager should start successfully");
 
-        // 发送测试告警
+        // Send test alert
         let alert_id = alert_manager
-            .send_alert(AlertLevel::Warning, "测试告警消息")
+            .send_alert(AlertLevel::Warning, "Test alert message")
             .await;
-        assert!(alert_id.is_ok(), "发送告警应该成功");
+        assert!(alert_id.is_ok(), "Sending alert should succeed");
 
-        // 等待告警处理
+        // Wait for alert processing
         sleep(Duration::from_millis(200)).await;
 
-        // 检查告警历史
+        // Check alert history
         let history = alert_manager.get_alert_history(Some(10)).await;
-        assert!(!history.is_empty(), "告警历史应该不为空");
+        assert!(!history.is_empty(), "Alert history should not be empty");
 
-        // 检查告警统计
+        // Check alert statistics
         let stats = alert_manager.get_stats().await;
-        assert!(stats.total_alerts > 0, "总告警数应该大于0");
+        assert!(stats.total_alerts > 0, "Total alerts should be greater than 0");
 
         println!(
-            "告警统计: 总数={}, 成功={}, 失败={}",
+            "Alert statistics: total={}, successful={}, failed={}",
             stats.total_alerts,
             stats.successful_sends,
             stats.failed_sends
         );
 
-        // 停止告警管理器
+        // Stop alert manager
         let stop_result = alert_manager.stop().await;
-        assert!(stop_result.is_ok(), "告警管理器停止应该成功");
+        assert!(stop_result.is_ok(), "Alert manager should stop successfully");
     }
 
-    /// 测试健康监控管理器集成功能
+    /// Test health monitor manager integration functionality
     #[tokio::test]
     async fn test_health_monitor_integration() {
         let (authority_state, checkpoint_store) = setup_test_environment().await;
         
-        // 创建各个组件
+        // Create components
         let health_checker = Arc::new(HealthChecker::new(
             HealthCheckConfig::default(),
             authority_state.clone(),
@@ -141,7 +141,7 @@ mod tests {
         let alert_manager = Arc::new(AlertManager::new(AlertConfig::default()));
         let metrics = Arc::new(HealthMetrics::default());
         
-        // 创建健康监控管理器
+        // Create health monitor manager
         let monitor_config = MonitorConfig::default();
         let health_monitor = HealthMonitor::new(
             monitor_config,
@@ -151,46 +151,46 @@ mod tests {
             metrics,
         );
 
-        // 启动健康监控
+        // Start health monitoring
         let start_result = health_monitor.start().await;
-        assert!(start_result.is_ok(), "健康监控启动应该成功");
+        assert!(start_result.is_ok(), "Health monitoring should start successfully");
 
-        // 等待监控运行
+        // Wait for monitoring to run
         sleep(Duration::from_millis(500)).await;
 
-        // 检查监控状态
+        // Check monitoring state
         let state = health_monitor.get_state().await;
         match state {
-            MonitorState::Running => println!("健康监控正在运行"),
-            _ => println!("健康监控状态: {:?}", state),
+            MonitorState::Running => println!("Health monitoring is running"),
+            _ => println!("Health monitoring state: {:?}", state),
         }
 
-        // 执行一次健康检查
+        // Execute one health check
         let health_result = health_monitor.perform_health_check().await;
-        assert!(health_result.is_ok(), "健康检查应该成功");
+        assert!(health_result.is_ok(), "Health check should succeed");
 
         let health_status = health_result.unwrap();
         println!(
-            "集成健康检查结果: 总分={}/100",
+            "Integrated health check result: score={}/100",
             health_status.health_score()
         );
 
-        // 检查告警历史
+        // Check alert history
         let alert_history = alert_manager.get_alert_history(None).await;
-        println!("生成了 {} 个告警", alert_history.len());
+        println!("Generated {} alerts", alert_history.len());
 
-        // 停止健康监控
+        // Stop health monitoring
         let stop_result = health_monitor.stop().await;
-        assert!(stop_result.is_ok(), "健康监控停止应该成功");
+        assert!(stop_result.is_ok(), "Health monitoring should stop successfully");
     }
 
-    /// 测试告警级别和去重功能
+    /// Test alert levels and deduplication functionality
     #[tokio::test]
     async fn test_alert_levels_and_deduplication() {
         let alert_manager = AlertManager::new(AlertConfig::default());
         let _ = alert_manager.start().await;
 
-        // 测试不同级别的告警
+        // Test different alert levels
         let levels = vec![
             AlertLevel::Info,
             AlertLevel::Warning,
@@ -201,25 +201,25 @@ mod tests {
 
         for level in levels {
             let result = alert_manager
-                .send_alert(level, &format!("测试{}级别告警", level))
+                .send_alert(level, &format!("Test {} level alert", level))
                 .await;
-            assert!(result.is_ok(), "发送{}级别告警应该成功", level);
+            assert!(result.is_ok(), "Sending {} level alert should succeed", level);
         }
 
-        // 测试告警去重
-        let message = "重复告警测试";
+        // Test alert deduplication
+        let message = "Duplicate alert test";
         let _id1 = alert_manager.send_alert(AlertLevel::Warning, message).await.unwrap();
         let _id2 = alert_manager.send_alert(AlertLevel::Warning, message).await.unwrap();
 
         sleep(Duration::from_millis(100)).await;
 
         let stats = alert_manager.get_stats().await;
-        println!("告警统计信息: {:?}", stats);
+        println!("Alert statistics: {:?}", stats);
 
         let _ = alert_manager.stop().await;
     }
 
-    /// 设置测试环境
+    /// Setup test environment
     async fn setup_test_environment() -> (Arc<crate::authority::AuthorityState>, Arc<crate::checkpoints::CheckpointStore>) {
         let authority_test_utils = make_authority_test_utils().await;
         let authority_state = authority_test_utils.state;
@@ -228,17 +228,17 @@ mod tests {
         (authority_state, checkpoint_store)
     }
 
-    /// 测试攻击指标创建和属性
+    /// Test attack indicator creation and properties
     #[test]
     fn test_attack_indicator_creation() {
         let indicator = AttackIndicator::new(
             AttackType::ConsensusAttack,
-            "测试攻击描述".to_string(),
+            "Test attack description".to_string(),
             0.9,
             8,
         )
         .with_metadata("test_key".to_string(), "test_value".to_string())
-        .with_mitigation("测试缓解措施".to_string());
+        .with_mitigation("Test mitigation measure".to_string());
 
         assert_eq!(indicator.attack_type, AttackType::ConsensusAttack);
         assert_eq!(indicator.confidence, 0.9);
@@ -248,7 +248,7 @@ mod tests {
         assert!(!indicator.mitigation_suggestions.is_empty());
     }
 
-    /// 测试健康状态计算
+    /// Test health status calculation
     #[test]
     fn test_health_status_calculation() {
         let mut status = HealthStatus::new();
@@ -265,7 +265,7 @@ mod tests {
         assert!(status.is_healthy());
     }
 
-    /// 测试告警级别转换
+    /// Test alert level conversion
     #[test]
     fn test_alert_level_conversion() {
         assert_eq!(AlertLevel::Info.to_number(), 1);
@@ -273,7 +273,7 @@ mod tests {
         
         assert_eq!(AlertLevel::from_number(1), AlertLevel::Info);
         assert_eq!(AlertLevel::from_number(5), AlertLevel::Critical);
-        assert_eq!(AlertLevel::from_number(10), AlertLevel::Critical); // 超出范围应该返回Critical
+        assert_eq!(AlertLevel::from_number(10), AlertLevel::Critical); // Out of range should return Critical
         
         assert!(AlertLevel::Critical.is_urgent());
         assert!(!AlertLevel::Info.is_urgent());

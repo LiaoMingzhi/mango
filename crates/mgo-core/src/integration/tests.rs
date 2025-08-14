@@ -59,25 +59,25 @@ mod tests {
             &registry,
         );
 
-        assert!(ha_manager.is_ok(), "高可用性管理器创建应该成功");
+        assert!(ha_manager.is_ok(), "High availability manager creation should succeed");
         
         let ha_manager = ha_manager.unwrap();
         
-        // 检查初始状态
+        // Check initial state
         let initial_state = ha_manager.get_system_state().await;
-        assert_eq!(initial_state, SystemState::Stopped, "初始状态应该是Stopped");
+        assert_eq!(initial_state, SystemState::Stopped, "Initial state should be Stopped");
 
-        println!("高可用性管理器创建成功");
+        println!("High availability manager created successfully");
     }
 
-    /// 测试高可用性管理器的启动和停止
+    /// Test high availability manager startup and shutdown
     #[tokio::test]
     async fn test_high_availability_manager_lifecycle() {
         let (authority_state, checkpoint_store, network_client, registry) = 
             setup_test_environment().await;
 
         let config = HighAvailabilityConfig {
-            enable_auto_recovery: false, // 禁用自动恢复以便测试
+            enable_auto_recovery: false, // Disable auto recovery for testing
             ..Default::default()
         };
         
@@ -89,32 +89,32 @@ mod tests {
             &registry,
         ).unwrap();
 
-        // 启动管理器
+        // Start manager
         let start_result = ha_manager.start().await;
-        assert!(start_result.is_ok(), "高可用性管理器启动应该成功");
+        assert!(start_result.is_ok(), "High availability manager should start successfully");
 
-        // 等待一段时间让系统稳定
+        // Wait for system to stabilize
         sleep(Duration::from_millis(100)).await;
 
-        // 检查状态
+        // Check state
         let running_state = ha_manager.get_system_state().await;
-        assert_eq!(running_state, SystemState::Healthy, "运行状态应该是Healthy");
+        assert_eq!(running_state, SystemState::Healthy, "Running state should be Healthy");
 
-        // 停止管理器
+        // Stop manager
         let stop_result = ha_manager.stop().await;
-        assert!(stop_result.is_ok(), "高可用性管理器停止应该成功");
+        assert!(stop_result.is_ok(), "High availability manager should stop successfully");
 
-        // 等待停止完成
+        // Wait for shutdown to complete
         sleep(Duration::from_millis(100)).await;
 
-        // 检查停止后状态
+        // Check state after shutdown
         let stopped_state = ha_manager.get_system_state().await;
-        assert_eq!(stopped_state, SystemState::Stopped, "停止状态应该是Stopped");
+        assert_eq!(stopped_state, SystemState::Stopped, "Stopped state should be Stopped");
 
-        println!("高可用性管理器生命周期测试通过");
+        println!("High availability manager lifecycle test passed");
     }
 
-    /// 测试健康检查功能
+    /// Test health check functionality
     #[tokio::test]
     async fn test_health_check_integration() {
         let (authority_state, checkpoint_store, network_client, registry) = 
@@ -130,36 +130,36 @@ mod tests {
             &registry,
         ).unwrap();
 
-        // 启动管理器
+        // Start manager
         ha_manager.start().await.unwrap();
 
-        // 执行健康检查
+        // Execute health check
         let health_result = ha_manager.perform_health_check().await;
-        assert!(health_result.is_ok(), "健康检查应该成功");
+        assert!(health_result.is_ok(), "Health check should succeed");
 
         let health_status = health_result.unwrap();
-        assert!(health_status.health_score() <= 100, "健康分数应该在有效范围内");
+        assert!(health_status.health_score() <= 100, "Health score should be within valid range");
 
         println!(
-            "健康检查结果: 分数={}/100, 健康={}", 
+            "Health check result: score={}/100, healthy={}", 
             health_status.health_score(),
             health_status.is_healthy()
         );
 
-        // 停止管理器
+        // Stop manager
         ha_manager.stop().await.unwrap();
 
-        println!("健康检查集成测试通过");
+        println!("Health check integration test passed");
     }
 
-    /// 测试恢复策略分析
+    /// Test recovery strategy analysis
     #[tokio::test]
     async fn test_recovery_strategy_analysis() {
         let (authority_state, checkpoint_store, network_client, registry) = 
             setup_test_environment().await;
 
         let config = HighAvailabilityConfig {
-            enable_auto_recovery: false, // 禁用自动恢复
+            enable_auto_recovery: false, // Disable auto recovery
             ..Default::default()
         };
         
@@ -173,46 +173,46 @@ mod tests {
 
         ha_manager.start().await.unwrap();
 
-        // 执行健康检查以获取健康状态
+        // Execute health check to get health status
         let health_status = ha_manager.perform_health_check().await.unwrap();
         
-        // 分析恢复策略
+        // Analyze recovery strategy
         let strategy = ha_manager.analyze_recovery_strategy(&health_status).await;
         
         match strategy {
             RecoveryStrategy::None => {
-                println!("系统健康，无需恢复");
+                println!("System healthy, no recovery needed");
             }
             RecoveryStrategy::RestartServices => {
-                println!("建议重启服务");
+                println!("Recommend restarting services");
             }
             RecoveryStrategy::Rollback { target_checkpoint } => {
-                println!("建议回滚到检查点 {}", target_checkpoint);
+                println!("Recommend rollback to checkpoint {}", target_checkpoint);
             }
             RecoveryStrategy::ColdStart => {
-                println!("建议执行冷启动");
+                println!("Recommend executing cold start");
             }
             RecoveryStrategy::Hybrid { target_checkpoint } => {
-                println!("建议执行混合策略，目标检查点 {}", target_checkpoint);
+                println!("Recommend executing hybrid strategy, target checkpoint {}", target_checkpoint);
             }
         }
 
         ha_manager.stop().await.unwrap();
 
-        println!("恢复策略分析测试通过");
+        println!("Recovery strategy analysis test passed");
     }
 
-    /// 测试配置更新
+    /// Test configuration updates
     #[test]
     fn test_configuration_updates() {
         let mut config = HighAvailabilityConfig::default();
         
-        // 测试默认配置
+        // Test default configuration
         assert!(config.enable_auto_recovery);
         assert_eq!(config.auto_recovery_threshold, 3);
         assert_eq!(config.max_recovery_attempts, 3);
 
-        // 更新配置
+        // Update configuration
         config.enable_auto_recovery = false;
         config.auto_recovery_threshold = 5;
         config.max_recovery_attempts = 5;
@@ -223,10 +223,10 @@ mod tests {
         assert_eq!(config.max_recovery_attempts, 5);
         assert_eq!(config.recovery_interval, Duration::from_secs(600));
 
-        println!("配置更新测试通过");
+        println!("Configuration update test passed");
     }
 
-    /// 测试系统状态转换
+    /// Test system state transitions
     #[test]
     fn test_system_state_transitions() {
         let states = vec![
@@ -235,42 +235,42 @@ mod tests {
             SystemState::Unhealthy,
             SystemState::Recovering,
             SystemState::Stopped,
-            SystemState::Error("测试错误".to_string()),
+            SystemState::Error("Test error".to_string()),
         ];
 
         for state in &states {
             match state {
                 SystemState::Healthy => {
-                    println!("状态: 健康");
+                    println!("State: Healthy");
                     assert_eq!(*state, SystemState::Healthy);
                 }
                 SystemState::Degraded => {
-                    println!("状态: 降级");
+                    println!("State: Degraded");
                     assert_eq!(*state, SystemState::Degraded);
                 }
                 SystemState::Unhealthy => {
-                    println!("状态: 不健康");
+                    println!("State: Unhealthy");
                     assert_eq!(*state, SystemState::Unhealthy);
                 }
                 SystemState::Recovering => {
-                    println!("状态: 恢复中");
+                    println!("State: Recovering");
                     assert_eq!(*state, SystemState::Recovering);
                 }
                 SystemState::Stopped => {
-                    println!("状态: 已停止");
+                    println!("State: Stopped");
                     assert_eq!(*state, SystemState::Stopped);
                 }
                 SystemState::Error(msg) => {
-                    println!("状态: 错误 - {}", msg);
+                    println!("State: Error - {}", msg);
                     assert!(matches!(state, SystemState::Error(_)));
                 }
             }
         }
 
-        println!("系统状态转换测试通过");
+        println!("System state transition test passed");
     }
 
-    /// 测试错误处理
+    /// Test error handling
     #[tokio::test]
     async fn test_error_handling() {
         let (authority_state, checkpoint_store, network_client, registry) = 
@@ -286,22 +286,22 @@ mod tests {
             &registry,
         ).unwrap();
 
-        // 启动管理器
+        // Start manager
         ha_manager.start().await.unwrap();
 
-        // 测试回滚到不存在的检查点（应该失败）
+        // Test rollback to non-existent checkpoint (should fail)
         let invalid_checkpoint = 999999;
         let rollback_result = ha_manager.execute_rollback(invalid_checkpoint, false).await;
         
-        // 应该返回错误
-        assert!(rollback_result.is_err(), "回滚到无效检查点应该失败");
+        // Should return error
+        assert!(rollback_result.is_err(), "Rollback to invalid checkpoint should fail");
         
-        println!("错误处理测试通过: {:?}", rollback_result.unwrap_err());
+        println!("Error handling test passed: {:?}", rollback_result.unwrap_err());
 
         ha_manager.stop().await.unwrap();
     }
 
-    /// 测试并发操作
+    /// Test concurrent operations
     #[tokio::test]
     async fn test_concurrent_operations() {
         let (authority_state, checkpoint_store, network_client, registry) = 
@@ -322,20 +322,20 @@ mod tests {
 
         ha_manager.start().await.unwrap();
 
-        // 并发执行多个健康检查
+        // Execute multiple concurrent health checks
         let mut handles = Vec::new();
         
         for i in 0..5 {
             let ha_manager_clone = Arc::clone(&ha_manager);
             let handle = tokio::spawn(async move {
                 let result = ha_manager_clone.perform_health_check().await;
-                println!("并发健康检查 {} 完成", i);
+                println!("Concurrent health check {} completed", i);
                 result
             });
             handles.push(handle);
         }
 
-        // 等待所有任务完成
+        // Wait for all tasks to complete
         let mut success_count = 0;
         for handle in handles {
             if handle.await.unwrap().is_ok() {
@@ -343,14 +343,14 @@ mod tests {
             }
         }
 
-        assert_eq!(success_count, 5, "所有并发健康检查都应该成功");
+        assert_eq!(success_count, 5, "All concurrent health checks should succeed");
 
         ha_manager.stop().await.unwrap();
 
-        println!("并发操作测试通过");
+        println!("Concurrent operations test passed");
     }
 
-    /// 性能测试
+    /// Performance test
     #[tokio::test]
     async fn test_performance_metrics() {
         let (authority_state, checkpoint_store, network_client, registry) = 
@@ -368,7 +368,7 @@ mod tests {
 
         ha_manager.start().await.unwrap();
 
-        // 测量健康检查性能
+        // Measure health check performance
         let start_time = std::time::Instant::now();
         
         for _ in 0..10 {
@@ -378,11 +378,11 @@ mod tests {
         let elapsed = start_time.elapsed();
         let avg_time = elapsed / 10;
         
-        println!("健康检查平均耗时: {:?}", avg_time);
-        assert!(avg_time < Duration::from_secs(1), "健康检查应该在1秒内完成");
+        println!("Health check average time: {:?}", avg_time);
+        assert!(avg_time < Duration::from_secs(1), "Health check should complete within 1 second");
 
         ha_manager.stop().await.unwrap();
 
-        println!("性能测试通过");
+        println!("Performance test passed");
     }
 }

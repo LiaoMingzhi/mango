@@ -48,29 +48,29 @@ async fn test_rollback_state_transitions() {
         metrics,
     );
     
-    // 测试初始状态
+    // Test initial state
     let initial_state = rollback_manager.get_rollback_state().await;
     assert!(matches!(initial_state, RollbackState::Idle));
     
-    // 测试取消操作（当没有回滚进行时）
+    // Test cancel operation (when no rollback is in progress)
     let cancel_result = rollback_manager.cancel_rollback().await;
     assert!(cancel_result.is_err());
 }
 
 #[tokio::test]
 async fn test_rollback_error_types() {
-    // 测试回滚错误类型
+    // Test rollback error types
     let error1 = RollbackError::CheckpointNotFound(100);
-    assert_eq!(error1.to_string(), "检查点 100 未找到");
+    assert_eq!(error1.to_string(), "Checkpoint 100 not found");
     
     let error2 = RollbackError::InvalidCheckpoint(200);
-    assert_eq!(error2.to_string(), "检查点 200 无效");
+    assert_eq!(error2.to_string(), "Checkpoint 200 is invalid");
     
     let error3 = RollbackError::RollbackNotFeasible(300);
-    assert_eq!(error3.to_string(), "回滚到检查点 300 不可行");
+    assert_eq!(error3.to_string(), "Rollback to checkpoint 300 is not feasible");
     
     let error4 = RollbackError::ConsensusStopFailed("test error".to_string());
-    assert_eq!(error4.to_string(), "共识停止失败: test error");
+    assert_eq!(error4.to_string(), "Consensus stop failed: test error");
 }
 
 #[tokio::test]
@@ -88,23 +88,23 @@ async fn test_rollback_result_creation() {
     
     let cancelled_result = RollbackResult::Cancelled;
     
-    // 测试结果创建
+    // Test result creation
     assert!(matches!(success_result, RollbackResult::Success { .. }));
     assert!(matches!(failed_result, RollbackResult::Failed { .. }));
     assert!(matches!(cancelled_result, RollbackResult::Cancelled));
 }
 
-// 模拟函数
+// Mock functions
 fn mock_authority_state() -> AuthorityState {
-    // 这是一个简化的mock实现
-    // 在实际使用中，需要更完整的mock实现
-    unimplemented!("需要实现完整的AuthorityState mock")
+    // This is a simplified mock implementation
+    // In actual use, a more complete mock implementation is needed
+    unimplemented!("Need to implement complete AuthorityState mock")
 }
 
 fn mock_network_client() -> NetworkAuthorityClient {
-    // 这是一个简化的mock实现
-    // 在实际使用中，需要更完整的mock实现
-    unimplemented!("需要实现完整的NetworkAuthorityClient mock")
+    // This is a simplified mock implementation
+    // In actual use, a more complete mock implementation is needed
+    unimplemented!("Need to implement complete NetworkAuthorityClient mock")
 }
 
 #[test]

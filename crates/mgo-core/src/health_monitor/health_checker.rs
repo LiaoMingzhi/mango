@@ -48,37 +48,37 @@ impl Default for HealthCheckConfig {
     }
 }
 
-/// 健康状态
+/// Health status
 #[derive(Debug, Clone)]
 pub struct HealthStatus {
-    /// 共识系统是否健康
+    /// Whether consensus system is healthy
     pub consensus_healthy: bool,
-    /// 网络连接是否健康
+    /// Whether network connection is healthy
     pub network_healthy: bool,
-    /// 存储系统是否健康
+    /// Whether storage system is healthy
     pub storage_healthy: bool,
-    /// 交易执行是否健康
+    /// Whether transaction execution is healthy
     pub execution_healthy: bool,
-    /// 检查时间戳
+    /// Check timestamp
     pub timestamp: Instant,
-    /// 详细错误信息
+    /// Detailed error information
     pub error_details: Vec<String>,
-    /// 性能指标
+    /// Performance metrics
     pub performance_metrics: PerformanceMetrics,
 }
 
-/// 性能指标
+/// Performance metrics
 #[derive(Debug, Clone)]
 pub struct PerformanceMetrics {
-    /// 共识检查耗时
+    /// Consensus check duration
     pub consensus_check_duration: Duration,
-    /// 网络检查耗时
+    /// Network check duration
     pub network_check_duration: Duration,
-    /// 存储检查耗时
+    /// Storage check duration
     pub storage_check_duration: Duration,
-    /// 执行检查耗时
+    /// Execution check duration
     pub execution_check_duration: Duration,
-    /// 总检查耗时
+    /// Total check duration
     pub total_check_duration: Duration,
 }
 
@@ -95,7 +95,7 @@ impl Default for PerformanceMetrics {
 }
 
 impl HealthStatus {
-    /// 创建新的健康状态
+    /// Create new health status
     pub fn new() -> Self {
         Self {
             consensus_healthy: false,
@@ -108,7 +108,7 @@ impl HealthStatus {
         }
     }
 
-    /// 判断整体是否健康
+    /// Check if overall is healthy
     pub fn is_healthy(&self) -> bool {
         self.consensus_healthy && 
         self.network_healthy && 
@@ -116,7 +116,7 @@ impl HealthStatus {
         self.execution_healthy
     }
 
-    /// 获取健康分数 (0-100)
+    /// Get health score (0-100)
     pub fn health_score(&self) -> u8 {
         let mut score = 0;
         if self.consensus_healthy { score += 25; }
@@ -126,7 +126,7 @@ impl HealthStatus {
         score
     }
 
-    /// 添加错误详情
+    /// Add error details
     pub fn add_error(&mut self, error: String) {
         self.error_details.push(error);
     }
@@ -138,13 +138,13 @@ impl Default for HealthStatus {
     }
 }
 
-/// 健康检查器
+/// Health checker
 /// 
-/// 负责执行各种健康检查，包括：
-/// - 检查共识系统状态
-/// - 检查网络连接状态
-/// - 检查存储系统状态
-/// - 检查交易执行状态
+/// Responsible for executing various health checks, including:
+/// - Check consensus system status
+/// - Check network connection status
+/// - Check storage system status
+/// - Check transaction execution status
 pub struct HealthChecker {
     config: HealthCheckConfig,
     authority_state: Arc<AuthorityState>,
@@ -152,7 +152,7 @@ pub struct HealthChecker {
 }
 
 impl HealthChecker {
-    /// 创建新的健康检查器
+    /// Create new health checker
     pub fn new(
         config: HealthCheckConfig,
         authority_state: Arc<AuthorityState>,
@@ -165,15 +165,15 @@ impl HealthChecker {
         }
     }
 
-    /// 执行完整的节点健康检查
+    /// Execute complete node health check
     #[instrument(level = "debug", skip(self))]
     pub async fn check_node_health(&self) -> Result<HealthStatus> {
         let total_start = Instant::now();
         let mut health_status = HealthStatus::new();
         
-        info!("开始执行节点健康检查");
+        info!("Starting node health check execution");
 
-        // 并行执行各项健康检查以提高效率
+        // Execute health checks in parallel to improve efficiency
         let (consensus_result, network_result, storage_result, execution_result) = tokio::join!(
             self.check_consensus_health(),
             self.check_network_health(),
@@ -181,79 +181,79 @@ impl HealthChecker {
             self.check_execution_health()
         );
 
-        // 处理共识健康检查结果
+        // Process consensus health check results
         match consensus_result {
             Ok((healthy, duration)) => {
                 health_status.consensus_healthy = healthy;
                 health_status.performance_metrics.consensus_check_duration = duration;
                 if healthy {
-                    debug!("共识系统健康检查通过");
+                    debug!("Consensus system health check passed");
                 } else {
-                    health_status.add_error("共识系统健康检查失败".to_string());
-                    warn!("共识系统健康检查失败");
+                    health_status.add_error("Consensus system health check failed".to_string());
+                    warn!("Consensus system health check failed");
                 }
             }
             Err(e) => {
                 health_status.consensus_healthy = false;
-                health_status.add_error(format!("共识健康检查错误: {}", e));
-                error!("共识健康检查错误: {:?}", e);
+                health_status.add_error(format!("Consensus health check error: {}", e));
+                error!("Consensus health check error: {:?}", e);
             }
         }
 
-        // 处理网络健康检查结果
+        // Process network health check results
         match network_result {
             Ok((healthy, duration)) => {
                 health_status.network_healthy = healthy;
                 health_status.performance_metrics.network_check_duration = duration;
                 if healthy {
-                    debug!("网络连接健康检查通过");
+                    debug!("Network connection health check passed");
                 } else {
-                    health_status.add_error("网络连接健康检查失败".to_string());
-                    warn!("网络连接健康检查失败");
+                    health_status.add_error("Network connection health check failed".to_string());
+                    warn!("Network connection health check failed");
                 }
             }
             Err(e) => {
                 health_status.network_healthy = false;
-                health_status.add_error(format!("网络健康检查错误: {}", e));
-                error!("网络健康检查错误: {:?}", e);
+                health_status.add_error(format!("Network health check error: {}", e));
+                error!("Network health check error: {:?}", e);
             }
         }
 
-        // 处理存储健康检查结果
+        // Process storage health check results
         match storage_result {
             Ok((healthy, duration)) => {
                 health_status.storage_healthy = healthy;
                 health_status.performance_metrics.storage_check_duration = duration;
                 if healthy {
-                    debug!("存储系统健康检查通过");
+                    debug!("Storage system health check passed");
                 } else {
-                    health_status.add_error("存储系统健康检查失败".to_string());
-                    warn!("存储系统健康检查失败");
+                    health_status.add_error("Storage system health check failed".to_string());
+                    warn!("Storage system health check failed");
                 }
             }
             Err(e) => {
                 health_status.storage_healthy = false;
-                health_status.add_error(format!("存储健康检查错误: {}", e));
-                error!("存储健康检查错误: {:?}", e);
+                health_status.add_error(format!("Storage health check error: {}", e));
+                error!("Storage health check error: {:?}", e);
             }
         }
 
-        // 处理执行健康检查结果
+        // Process execution health check results
         match execution_result {
             Ok((healthy, duration)) => {
                 health_status.execution_healthy = healthy;
                 health_status.performance_metrics.execution_check_duration = duration;
                 if healthy {
-                    debug!("交易执行健康检查通过");
+                    debug!("Transaction execution health check passed");
                 } else {
-                    health_status.add_error("交易执行健康检查失败".to_string());
-                    warn!("交易执行健康检查失败");
+                    health_status.add_error("Transaction execution health check failed".to_string());
+                    warn!("Transaction execution health check failed");
                 }
             }
             Err(e) => {
                 health_status.execution_healthy = false;
-                health_status.add_error(format!("执行健康检查错误: {}", e));
-                error!("执行健康检查错误: {:?}", e);
+                health_status.add_error(format!("Execution health check error: {}", e));
+                error!("Execution health check error: {:?}", e);
             }
         }
 
@@ -262,7 +262,7 @@ impl HealthChecker {
 
         let health_score = health_status.health_score();
         info!(
-            "节点健康检查完成: 总分={}/100, 耗时={:?}", 
+            "Node health check completed: total score={}/100, duration={:?}", 
             health_score, 
             health_status.performance_metrics.total_check_duration
         );
@@ -270,17 +270,17 @@ impl HealthChecker {
         Ok(health_status)
     }
 
-    /// 检查共识系统健康状态
+    /// Check consensus system health status
     async fn check_consensus_health(&self) -> Result<(bool, Duration)> {
         let start = Instant::now();
         
-        // 使用超时机制防止检查时间过长
+        // Use timeout mechanism to prevent check taking too long
         let result = tokio::time::timeout(self.config.consensus_timeout, async {
-            // 1. 检查当前epoch信息
+            // 1. Check current epoch information
             let current_epoch = self.authority_state.current_epoch_for_testing();
-            debug!("当前epoch: {}", current_epoch);
+            debug!("Current epoch: {}", current_epoch);
 
-            // 2. 检查委员会信息
+            // 2. Check committee information
             let committee = self.authority_state.committee_store()
                 .get_committee(&current_epoch)?;
             
@@ -288,24 +288,24 @@ impl HealthChecker {
                 return Ok::<bool, anyhow::Error>(false);
             }
 
-            // 3. 检查是否有有效的委员会
+            // 3. Check if there is a valid committee
             let committee = committee.unwrap();
             if committee.num_members() == 0 {
                 return Ok(false);
             }
 
-            // 4. 检查本节点是否在委员会中
+            // 4. Check if this node is in the committee
             let authority_name = &self.authority_state.name;
             if !committee.authority_exists(&authority_name) {
-                warn!("本节点 {} 不在当前委员会中", authority_name);
+                warn!("This node {} is not in current committee", authority_name);
                 return Ok(false);
             }
 
-            // 5. 检查是否有最新的共识状态
+            // 5. Check if there is latest consensus state
             if self.config.enable_detailed_check {
-                // 检查最近是否有共识活动
-                // 这里可以添加更详细的共识状态检查
-                debug!("详细共识检查完成");
+                // Check if there is recent consensus activity
+                // More detailed consensus state checks can be added here
+                debug!("Detailed consensus check completed");
             }
 
             Ok(true)
@@ -315,21 +315,21 @@ impl HealthChecker {
         
         match result {
             Ok(Ok(healthy)) => Ok((healthy, duration)),
-            Ok(Err(e)) => Err(anyhow!("共识健康检查失败: {}", e)),
-            Err(_) => Err(anyhow!("共识健康检查超时")),
+            Ok(Err(e)) => Err(anyhow!("Consensus health check failed: {}", e)),
+            Err(_) => Err(anyhow!("Consensus health check timeout")),
         }
     }
 
-    /// 检查网络连接健康状态
+    /// Check network connection health status
     async fn check_network_health(&self) -> Result<(bool, Duration)> {
         let start = Instant::now();
         
         let result = tokio::time::timeout(self.config.network_timeout, async {
-            // 1. 检查网络配置
-            // 简化网络检查，不直接获取genesis配置
-            // 而是检查基本的网络连接能力
+            // 1. Check network configuration
+            // Simplify network check, don't directly get genesis configuration
+            // but check basic network connection capability
 
-            // 2. 检查当前委员会中的其他节点连接状态
+            // 2. Check connection status of other nodes in current committee
             let current_epoch = self.authority_state.current_epoch_for_testing();
             let committee = self.authority_state.committee_store()
                 .get_committee(&current_epoch)?;
@@ -338,25 +338,25 @@ impl HealthChecker {
                 let authority_names: Vec<AuthorityName> = committee.names().cloned().collect();
                 let self_name = &self.authority_state.name;
                 
-                // 检查是否有其他节点存在（网络连接的基础条件）
+                // Check if other nodes exist (basic condition for network connection)
                 let other_nodes_count = authority_names.iter()
                     .filter(|&&name| name != *self_name)
                     .count();
                 
                 if other_nodes_count == 0 {
-                    warn!("网络中没有其他节点");
+                    warn!("No other nodes in network");
                     return Ok::<bool, anyhow::Error>(false);
                 }
 
-                debug!("网络中有 {} 个其他节点", other_nodes_count);
+                debug!("There are {} other nodes in network", other_nodes_count);
             } else {
                 return Ok(false);
             }
 
-            // 3. 检查网络接口是否正常
-            // 这里可以添加更详细的网络连接检查
+            // 3. Check if network interface is normal
+            // More detailed network connection checks can be added here
             if self.config.enable_detailed_check {
-                debug!("详细网络检查完成");
+                debug!("Detailed network check completed");
             }
 
             Ok(true)
@@ -366,39 +366,39 @@ impl HealthChecker {
         
         match result {
             Ok(Ok(healthy)) => Ok((healthy, duration)),
-            Ok(Err(e)) => Err(anyhow!("网络健康检查失败: {}", e)),
-            Err(_) => Err(anyhow!("网络健康检查超时")),
+            Ok(Err(e)) => Err(anyhow!("Network health check failed: {}", e)),
+            Err(_) => Err(anyhow!("Network health check timeout")),
         }
     }
 
-    /// 检查存储系统健康状态
+    /// Check storage system health status
     async fn check_storage_health(&self) -> Result<(bool, Duration)> {
         let start = Instant::now();
         
         let result = tokio::time::timeout(self.config.storage_timeout, async {
-            // 1. 检查检查点存储
+            // 1. Check checkpoint storage
             let latest_checkpoint = self.checkpoint_store.get_highest_executed_checkpoint()?;
             if latest_checkpoint.is_none() {
-                warn!("没有找到最新的检查点");
+                warn!("Latest checkpoint not found");
                 return Ok::<bool, anyhow::Error>(false);
             }
 
             let checkpoint = latest_checkpoint.unwrap();
-            debug!("最新检查点序列号: {}", checkpoint.sequence_number);
+            debug!("Latest checkpoint sequence number: {}", checkpoint.sequence_number);
 
-            // 2. 检查权威状态存储
+            // 2. Check authority state storage
             let _database = self.authority_state.database.clone();
             
-            // 尝试读取一些基本数据来验证存储系统是否正常
-            // 简化存储检查，检查是否能正常访问数据库
-            // 基本数据库状态检查
-            let _objects_check = true; // 简化为总是返回true
-            debug!("存储系统基本检查通过");
+            // Try to read some basic data to verify if storage system is normal
+            // Simplify storage check, check if database can be accessed normally
+            // Basic database state check
+            let _objects_check = true; // Simplified to always return true
+            debug!("Storage system basic check passed");
 
-            // 3. 检查存储空间
+            // 3. Check storage space
             if self.config.enable_detailed_check {
-                // 这里可以添加磁盘空间检查等
-                debug!("详细存储检查完成");
+                // Disk space checks etc. can be added here
+                debug!("Detailed storage check completed");
             }
 
             Ok(true)
@@ -408,41 +408,41 @@ impl HealthChecker {
         
         match result {
             Ok(Ok(healthy)) => Ok((healthy, duration)),
-            Ok(Err(e)) => Err(anyhow!("存储健康检查失败: {}", e)),
-            Err(_) => Err(anyhow!("存储健康检查超时")),
+            Ok(Err(e)) => Err(anyhow!("Storage health check failed: {}", e)),
+            Err(_) => Err(anyhow!("Storage health check timeout")),
         }
     }
 
-    /// 检查交易执行健康状态
+    /// Check transaction execution health status
     async fn check_execution_health(&self) -> Result<(bool, Duration)> {
         let start = Instant::now();
         
         let result = tokio::time::timeout(self.config.execution_timeout, async {
-            // 1. 检查执行引擎状态
+            // 1. Check execution engine status
             let current_epoch = self.authority_state.current_epoch_for_testing();
-            debug!("检查epoch {} 的执行状态", current_epoch);
+            debug!("Checking execution status for epoch {}", current_epoch);
 
-            // 2. 检查是否有待处理的交易
-            // 简化执行检查，检查基本的数据库访问
-            // 基本执行状态检查
-            let _execution_check = true; // 简化为总是返回true
-            debug!("执行系统基本检查通过");
+            // 2. Check if there are pending transactions
+            // Simplify execution check, check basic database access
+            // Basic execution state check
+            let _execution_check = true; // Simplified to always return true
+            debug!("Execution system basic check passed");
 
-            // 3. 检查最近是否有成功执行的交易
+            // 3. Check if there are recently successfully executed transactions
             let latest_checkpoint = self.checkpoint_store.get_highest_executed_checkpoint()?;
             if let Some(checkpoint) = latest_checkpoint {
                 if checkpoint.sequence_number == 0 {
-                    // 如果是创世状态且没有交易，这是正常的
-                    debug!("处于创世状态");
+                    // If in genesis state with no transactions, this is normal
+                    debug!("In genesis state");
                 } else {
-                    debug!("最新执行检查点: {}", checkpoint.sequence_number);
+                    debug!("Latest execution checkpoint: {}", checkpoint.sequence_number);
                 }
             }
 
-            // 4. 检查执行器状态
+            // 4. Check executor status
             if self.config.enable_detailed_check {
-                // 这里可以添加更详细的执行状态检查
-                debug!("详细执行检查完成");
+                // More detailed execution state checks can be added here
+                debug!("Detailed execution check completed");
             }
 
             Ok::<bool, anyhow::Error>(true)
@@ -452,19 +452,19 @@ impl HealthChecker {
         
         match result {
             Ok(Ok(healthy)) => Ok((healthy, duration)),
-            Ok(Err(e)) => Err(anyhow!("执行健康检查失败: {}", e)),
-            Err(_) => Err(anyhow!("执行健康检查超时")),
+            Ok(Err(e)) => Err(anyhow!("Execution health check failed: {}", e)),
+            Err(_) => Err(anyhow!("Execution health check timeout")),
         }
     }
 
-    /// 获取健康检查配置
+    /// Get health check configuration
     pub fn get_config(&self) -> &HealthCheckConfig {
         &self.config
     }
 
-    /// 更新健康检查配置
+    /// Update health check configuration
     pub fn update_config(&mut self, config: HealthCheckConfig) {
         self.config = config;
-        info!("健康检查配置已更新");
+        info!("Health check configuration updated");
     }
 }
