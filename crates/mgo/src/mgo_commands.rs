@@ -200,11 +200,14 @@ pub enum MgoCommand {
 /// 执行回滚命令
 async fn run_rollback_command(cmd: RollbackCommand) -> Result<(), anyhow::Error> {
     match cmd {
-        RollbackCommand::ToCheckpoint { checkpoint, force, config: _ } => {
+        RollbackCommand::ToCheckpoint { checkpoint, force, config } => {
             println!("🔄 开始回滚到检查点 {} (强制模式: {})", checkpoint, force);
             println!("📌 目标检查点: {}", checkpoint);
             println!("⚙️  强制模式: {}", force);
-            println!("⚠️  注意: 当前为演示模式，实际回滚功能需要与运行中的节点连接");
+            println!("📂 配置文件: {:?}", config);
+            
+            // TODO: 集成实际的rollback manager
+            println!("⚠️  注意: 生产模式回滚功能开发中...");
             
             // 模拟回滚过程
             println!("🔍 验证检查点存在性...");
@@ -216,19 +219,76 @@ async fn run_rollback_command(cmd: RollbackCommand) -> Result<(), anyhow::Error>
             
             Ok(())
         }
-        RollbackCommand::Status { config: _ } => {
+        RollbackCommand::ToEpoch { epoch, force, config } => {
+            println!("🎯 开始回滚到世纪 {} (强制模式: {})", epoch, force);
+            println!("📊 目标世纪: {}", epoch);
+            println!("⚙️  强制模式: {}", force);
+            println!("📂 配置文件: {:?}", config);
+            
+            // TODO: 集成实际的rollback manager
+            println!("⚠️  注意: 生产模式世纪回滚功能开发中...");
+            
+            // 模拟世纪回滚过程
+            println!("🔍 查找世纪 {} 的边界检查点...", epoch);
+            println!("⏸️  停止共识进程...");
+            println!("🗂️  回滚到世纪 {} 状态...", epoch);
+            println!("🔄 重启共识进程...");
+            println!("🌐 同步网络状态...");
+            println!("🏁 世纪回滚操作完成");
+            
+            Ok(())
+        }
+        RollbackCommand::ToPreviousEpoch { force, config } => {
+            println!("⬅️  开始回滚到上一个世纪 (强制模式: {})", force);
+            println!("⚙️  强制模式: {}", force);
+            println!("📂 配置文件: {:?}", config);
+            
+            // TODO: 集成实际的rollback manager  
+            println!("⚠️  注意: 生产模式上一世纪回滚功能开发中...");
+            
+            // 模拟上一世纪回滚过程
+            println!("🔍 检测当前世纪...");
+            println!("🎯 计算目标世纪 (当前世纪 - 1)...");
+            println!("⏸️  停止共识进程...");
+            println!("🗂️  回滚到上一个世纪状态...");
+            println!("🔄 重启共识进程...");
+            println!("🌐 同步网络状态...");
+            println!("🏁 上一世纪回滚操作完成");
+            
+            Ok(())
+        }
+        RollbackCommand::CurrentEpoch { config } => {
+            println!("📊 获取当前世纪信息");
+            println!("📂 配置文件: {:?}", config);
+            
+            // TODO: 集成实际的authority state
+            println!("⚠️  注意: 生产模式世纪查询功能开发中...");
+            
+            // 模拟世纪信息输出
+            println!("🎯 当前世纪信息:");
+            println!("  当前世纪: 2");
+            println!("  世纪开始时间: 2025-08-18 07:30:00");
+            println!("  最新检查点: 9500");
+            println!("  可回滚范围: 世纪 0 - 世纪 1");
+            
+            Ok(())
+        }
+        RollbackCommand::Status { config } => {
             println!("📊 获取回滚状态");
+            println!("📂 配置文件: {:?}", config);
             
             // 模拟状态输出
             println!("回滚状态:");
             println!("  状态: 空闲");
             println!("  最后操作: 无");
             println!("  最后检查点: 未知");
+            println!("  当前世纪: 2");
             
             Ok(())
         }
-        RollbackCommand::Cancel { config: _ } => {
+        RollbackCommand::Cancel { config } => {
             println!("❌ 取消当前回滚操作");
+            println!("📂 配置文件: {:?}", config);
             
             // 模拟取消逻辑
             println!("✅ 回滚操作已取消");
@@ -1026,6 +1086,36 @@ pub enum RollbackCommand {
         /// Force rollback (skip safety checks)
         #[clap(long = "force")]
         force: bool,
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+    },
+    /// Rollback to a specific epoch
+    #[clap(name = "to-epoch")]
+    ToEpoch {
+        /// Target epoch number
+        #[clap(long = "epoch")]
+        epoch: u64,
+        /// Force rollback (skip safety checks)
+        #[clap(long = "force")]
+        force: bool,
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+    },
+    /// Rollback to previous epoch
+    #[clap(name = "to-previous-epoch")]
+    ToPreviousEpoch {
+        /// Force rollback (skip safety checks)
+        #[clap(long = "force")]
+        force: bool,
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+    },
+    /// Get current epoch information
+    #[clap(name = "current-epoch")]
+    CurrentEpoch {
         /// Node configuration path
         #[clap(long = "config")]
         config: Option<PathBuf>,

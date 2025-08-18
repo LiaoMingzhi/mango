@@ -529,7 +529,7 @@ impl Default for CheckpointExecutorConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct AuthorityStorePruningConfig {
     /// number of the latest epoch dbs to retain
@@ -564,6 +564,15 @@ pub struct AuthorityStorePruningConfig {
     /// disables object tombstone pruning. We don't serialize it if it is the default value, false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub killswitch_tombstone_pruning: bool,
+    /// enable epoch data backup before removal (default: true)
+    #[serde(default = "default_enable_epoch_backup")]
+    pub enable_epoch_backup: bool,
+    /// backup retention time in minutes (default: 600 minutes = 10 hours)
+    #[serde(default = "default_backup_retention_minutes")]
+    pub backup_retention_minutes: u64,
+    /// backup directory path (relative to node data directory)
+    #[serde(default = "default_backup_directory")]
+    pub backup_directory: String,
 }
 
 fn default_num_latest_epoch_dbs_to_retain() -> usize {
@@ -582,6 +591,18 @@ fn default_max_checkpoints_in_batch() -> usize {
     10
 }
 
+fn default_enable_epoch_backup() -> bool {
+    true
+}
+
+fn default_backup_retention_minutes() -> u64 {
+    600 // 10 hours
+}
+
+fn default_backup_directory() -> String {
+    "epoch_backups".to_string()
+}
+
 impl Default for AuthorityStorePruningConfig {
     fn default() -> Self {
         Self {
@@ -594,6 +615,9 @@ impl Default for AuthorityStorePruningConfig {
             periodic_compaction_threshold_days: None,
             num_epochs_to_retain_for_checkpoints: if cfg!(msim) { Some(2) } else { None },
             killswitch_tombstone_pruning: false,
+            enable_epoch_backup: default_enable_epoch_backup(),
+            backup_retention_minutes: default_backup_retention_minutes(),
+            backup_directory: default_backup_directory(),
         }
     }
 }

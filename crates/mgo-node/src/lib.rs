@@ -415,6 +415,9 @@ impl MgoNode {
         DBMetrics::init(&prometheus_registry);
         mango_metrics::init_metrics(&prometheus_registry);
 
+        // Extract pruning config before borrowing config for genesis
+        let mut pruning_config = config.authority_store_pruning_config.clone();
+
         let genesis = config.genesis()?;
 
         let secret = Arc::pin(config.protocol_key_pair().copy());
@@ -567,7 +570,6 @@ impl MgoNode {
             state_snapshot_handle.is_some(),
         )?;
 
-        let mut pruning_config = config.authority_store_pruning_config;
         if !epoch_store
             .protocol_config()
             .simplified_unwrap_then_delete()
@@ -883,7 +885,7 @@ impl MgoNode {
                         .prune_and_compact_before_upload
                         .unwrap_or(true),
                     config.indirect_objects_threshold,
-                    config.authority_store_pruning_config,
+                    config.authority_store_pruning_config.clone(),
                     prometheus_registry,
                     state_snapshot_enabled,
                 )?;

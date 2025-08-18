@@ -113,13 +113,13 @@ impl RollbackManager {
     ) -> Self {
         Self {
             config,
-            checkpoint_store,
-            authority_state,
+            checkpoint_store: checkpoint_store.clone(),
+            authority_state: authority_state.clone(),
             network_client,
             metrics,
             rollback_state: Arc::new(Mutex::new(RollbackState::Idle)),
             analysis: RollbackAnalysis::new(),
-            consensus: RollbackConsensus::new(),
+            consensus: RollbackConsensus::new(authority_state, checkpoint_store),
             health: RollbackHealth::new(),
         }
     }
@@ -965,6 +965,140 @@ impl RollbackManager {
                 Ok(())
             }
         }
+    }
+
+    /// Get current epoch from authority state
+    #[instrument(level = "debug", skip(self))]
+    pub async fn get_current_epoch(&self) -> Result<u64> {
+        debug!("Getting current epoch");
+        
+        // Get epoch from authority state
+        let epoch = self.authority_state.current_epoch_for_testing();
+        
+        debug!("Current epoch: {}", epoch);
+        Ok(epoch)
+    }
+
+    /// Rollback to a specific epoch
+    #[instrument(level = "info", skip(self), fields(target_epoch = %target_epoch, force = %force))]
+    pub async fn rollback_to_epoch(
+        &self,
+        target_epoch: u64,
+        force: bool,
+    ) -> Result<RollbackResult>
+    where
+        Self: Send + Sync,
+    {
+        info!("Starting rollback to epoch {} (force: {})", target_epoch, force);
+        
+        // Get current epoch
+        let current_epoch = self.get_current_epoch().await?;
+        
+        if target_epoch >= current_epoch {
+            return Err(RollbackError::RollbackNotFeasible {
+                checkpoint_seq: 0, // Using 0 as placeholder for epoch rollback
+                reason: format!("Target epoch {} is not less than current epoch {}", target_epoch, current_epoch),
+            }.into());
+        }
+
+        // Find the last checkpoint of the target epoch
+        let target_checkpoint = self.find_epoch_boundary_checkpoint(target_epoch).await?;
+        
+        info!("Found epoch {} boundary checkpoint: {}", target_epoch, target_checkpoint);
+        
+        // Perform rollback to the boundary checkpoint
+        self.rollback_to_checkpoint(target_checkpoint, force).await
+    }
+
+    /// Rollback to previous epoch
+    #[instrument(level = "info", skip(self), fields(force = %force))]
+    pub async fn rollback_to_previous_epoch(&self, force: bool) -> Result<RollbackResult>
+    where
+        Self: Send + Sync,
+    {
+        let current_epoch = self.get_current_epoch().await?;
+        
+        if current_epoch == 0 {
+            return Err(RollbackError::RollbackNotFeasible {
+                checkpoint_seq: 0,
+                reason: "Cannot rollback from epoch 0 - already at genesis".to_string(),
+            }.into());
+        }
+        
+        let target_epoch = current_epoch - 1;
+        info!("Rolling back from epoch {} to previous epoch {}", current_epoch, target_epoch);
+        
+        self.rollback_to_epoch(target_epoch, force).await
+    }
+
+    /// Find the boundary checkpoint for a given epoch
+    #[instrument(level = "debug", skip(self), fields(epoch = %epoch))]
+    async fn find_epoch_boundary_checkpoint(&self, epoch: u64) -> Result<CheckpointSequenceNumber> {
+        debug!("Finding boundary checkpoint for epoch {}", epoch);
+        
+        // Query checkpoint store for the last checkpoint of the epoch
+        let checkpoint_store = &self.checkpoint_store;
+        
+        // Find the highest checkpoint sequence that belongs to the target epoch
+        let highest_checkpoint = checkpoint_store.get_highest_executed_checkpoint_seq_number()?;
+        
+        // Search backwards from the highest checkpoint to find the last checkpoint of target epoch
+        for seq in (0..=highest_checkpoint.unwrap_or(0)).rev() {
+            if let Ok(Some(checkpoint)) = checkpoint_store.get_checkpoint_by_sequence_number(seq.into()) {
+                // Check if this checkpoint belongs to the target epoch
+                if checkpoint.epoch() == epoch {
+                    debug!("Found epoch {} boundary checkpoint: {}", epoch, seq);
+                    return Ok(seq.into());
+                }
+                // If we've gone past the target epoch, break
+                if checkpoint.epoch() < epoch {
+                    break;
+                }
+            }
+        }
+        
+        Err(RollbackError::CheckpointNotFound {
+            checkpoint_seq: 0, // No specific checkpoint sequence for epoch boundary
+        }.into())
+    }
+
+    /// Check rollback feasibility to a specific epoch
+    #[instrument(level = "debug", skip(self), fields(target_epoch = %target_epoch))]
+    pub async fn check_epoch_rollback_feasibility(&self, target_epoch: u64) -> Result<bool> {
+        let current_epoch = self.get_current_epoch().await?;
+        
+        // Basic feasibility checks
+        if target_epoch >= current_epoch {
+            return Ok(false);
+        }
+        
+        // Check if we can find the epoch boundary checkpoint
+        match self.find_epoch_boundary_checkpoint(target_epoch).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Get epoch range for rollback analysis
+    #[instrument(level = "debug", skip(self))]
+    pub async fn get_available_epoch_range(&self) -> Result<(u64, u64)> {
+        let current_epoch = self.get_current_epoch().await?;
+        
+        // Find the earliest available epoch by searching checkpoints
+        let checkpoint_store = &self.checkpoint_store;
+        let highest_checkpoint = checkpoint_store.get_highest_executed_checkpoint_seq_number()?;
+        
+        let mut earliest_epoch = current_epoch;
+        
+        // Search from beginning to find earliest available epoch
+        for seq in 0..=highest_checkpoint.unwrap_or(0) {
+            if let Ok(Some(checkpoint)) = checkpoint_store.get_checkpoint_by_sequence_number(seq.into()) {
+                earliest_epoch = checkpoint.epoch().min(earliest_epoch);
+                break;
+            }
+        }
+        
+        Ok((earliest_epoch, current_epoch))
     }
 }
 

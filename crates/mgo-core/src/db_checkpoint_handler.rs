@@ -256,7 +256,7 @@ impl DBCheckpointHandler {
             &perpetual_db,
             &checkpoint_store,
             &lock_table,
-            self.pruning_config,
+            self.pruning_config.clone(),
             metrics,
             self.indirect_objects_threshold,
         )
