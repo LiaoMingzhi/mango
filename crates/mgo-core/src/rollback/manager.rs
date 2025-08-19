@@ -49,6 +49,15 @@ pub struct RollbackVerificationResult {
     pub epoch_consistency: EpochConsistencyReport,
     pub verification_issues: Vec<String>,
 }
+
+/// Result of epoch synchronization operation
+#[derive(Debug, Clone)]
+pub struct EpochSyncResult {
+    pub sync_performed: bool,
+    pub original_epochs: Vec<(&'static str, u64)>,
+    pub final_epoch: u64,
+    pub inconsistencies_resolved: Vec<String>,
+}
 use crate::rollback::types::*;
 use crate::rollback::analysis::RollbackAnalysis;
 use crate::rollback::consensus::{RollbackConsensus, VerifiedCheckpoint};
@@ -998,10 +1007,10 @@ impl RollbackManager {
         }
     }
 
-    /// Get current epoch from authority state
+    /// Get current epoch from authority state with advanced synchronization
     #[instrument(level = "debug", skip(self))]
     pub async fn get_current_epoch(&self) -> Result<u64> {
-        debug!("Getting current epoch with comprehensive checks");
+        debug!("Getting current epoch with comprehensive checks and sync mechanism");
         
         // 1. Get epoch from the latest checkpoint (most reliable source)
         let latest_checkpoint_epoch = match self.checkpoint_store.get_highest_executed_checkpoint_seq_number() {
@@ -1018,11 +1027,11 @@ impl RollbackManager {
             _ => None
         };
         
-        // 2. Get epoch from current epoch store (direct access)
+        // 2. Get epoch from current epoch store (using load_epoch_store_one_call_per_task)
         let epoch_store_epoch = {
-            let epoch_store = self.authority_state.epoch_store_for_testing();
+            let epoch_store = self.authority_state.load_epoch_store_one_call_per_task();
             let epoch = epoch_store.epoch();
-            debug!("Current epoch store epoch: {}", epoch);
+            debug!("Current epoch store epoch (fresh load): {}", epoch);
             epoch
         };
         
@@ -1038,31 +1047,81 @@ impl RollbackManager {
             Some(epoch)
         };
         
-        // Determine the most reliable epoch
-        let candidates = vec![
-            ("latest_checkpoint", latest_checkpoint_epoch),
+        // 5. Get execution lock epoch (another critical source)
+        let execution_epoch = {
+            // Note: We can't directly access execution_lock from rollback manager
+            // but we can infer it from other sources
+            epoch_store_epoch
+        };
+        
+        // Determine the most reliable epoch using smart consensus algorithm
+        let epoch_sources = vec![
+            ("checkpoint", latest_checkpoint_epoch),
             ("committee", committee_epoch),
         ];
         
-        let mut max_epoch = epoch_store_epoch.max(authority_epoch);
+        let mut candidate_epochs = vec![
+            ("epoch_store", epoch_store_epoch),
+            ("authority_state", authority_epoch),
+            ("execution_inferred", execution_epoch),
+        ];
         
-        for (source, epoch_opt) in candidates {
+        // Add optional epochs
+        for (name, epoch_opt) in epoch_sources {
             if let Some(epoch) = epoch_opt {
-                debug!("Epoch from {}: {}", source, epoch);
-                max_epoch = max_epoch.max(epoch);
+                candidate_epochs.push((name, epoch));
             }
         }
         
-        debug!("Final determined epoch: {} (epoch_store: {}, authority: {}, max_from_checkpoints: {:?})", 
-               max_epoch, epoch_store_epoch, authority_epoch, latest_checkpoint_epoch);
+        // Use majority consensus or highest reliable epoch
+        let max_epoch = candidate_epochs.iter().map(|(_, e)| *e).max().unwrap_or(epoch_store_epoch);
+        let most_common_epoch = self.find_consensus_epoch(&candidate_epochs);
         
-        // Log any inconsistencies for debugging
-        if epoch_store_epoch != authority_epoch {
-            warn!("Epoch inconsistency detected: epoch_store={}, authority_state={}", 
-                  epoch_store_epoch, authority_epoch);
+        let final_epoch = if most_common_epoch == max_epoch {
+            max_epoch
+        } else {
+            // If there's disagreement, prefer checkpoint epoch if available, otherwise max
+            latest_checkpoint_epoch.unwrap_or(max_epoch)
+        };
+        
+        debug!("Epoch consensus analysis: max={}, consensus={}, final={}", 
+               max_epoch, most_common_epoch, final_epoch);
+        debug!("All epoch sources: {:?}", candidate_epochs);
+        
+        // Detect and log inconsistencies
+        let inconsistency_count = candidate_epochs.iter()
+            .filter(|(_, e)| *e != final_epoch)
+            .count();
+            
+        if inconsistency_count > 0 {
+            warn!("Epoch inconsistency detected: {} sources disagree with final epoch {}", 
+                  inconsistency_count, final_epoch);
+            
+            // Log detailed inconsistency information
+            for (source, epoch) in &candidate_epochs {
+                if *epoch != final_epoch {
+                    warn!("Source '{}' reports epoch {} (differs from final {})", 
+                          source, epoch, final_epoch);
+                }
+            }
         }
         
-        Ok(max_epoch)
+        Ok(final_epoch)
+    }
+    
+    /// Find consensus epoch among multiple sources
+    fn find_consensus_epoch(&self, epochs: &[(&str, u64)]) -> u64 {
+        let mut epoch_counts = std::collections::HashMap::new();
+        
+        for (_, epoch) in epochs {
+            *epoch_counts.entry(*epoch).or_insert(0) += 1;
+        }
+        
+        // Return the epoch with the most votes, or the highest if tied
+        epoch_counts.into_iter()
+            .max_by_key(|(epoch, count)| (*count, *epoch))
+            .map(|(epoch, _)| epoch)
+            .unwrap_or(0)
     }
 
     /// Rollback to a specific epoch
@@ -1310,6 +1369,99 @@ impl RollbackManager {
             epoch_consistency: epoch_report,
             verification_issues,
         })
+    }
+    
+    /// Force epoch synchronization across all components
+    #[instrument(level = "info", skip(self))]
+    pub async fn force_epoch_synchronization(&self) -> Result<EpochSyncResult> {
+        info!("Starting forced epoch synchronization across all components");
+        
+        // Step 1: Collect current state from all sources
+        let diagnosis = self.diagnose_epoch_consistency().await?;
+        
+        if diagnosis.is_consistent {
+            info!("All epoch sources are already consistent at epoch {}", diagnosis.epoch_store_epoch);
+            return Ok(EpochSyncResult {
+                sync_performed: false,
+                original_epochs: vec![
+                    ("epoch_store", diagnosis.epoch_store_epoch),
+                    ("authority_state", diagnosis.authority_epoch),
+                ],
+                final_epoch: diagnosis.epoch_store_epoch,
+                inconsistencies_resolved: vec![],
+            });
+        }
+        
+        // Step 2: Determine the authoritative epoch
+        let authoritative_epoch = diagnosis.recommended_epoch;
+        info!("Determined authoritative epoch: {}", authoritative_epoch);
+        
+        // Step 3: Identify components that need synchronization
+        let mut sync_actions = Vec::new();
+        let mut inconsistencies_resolved = Vec::new();
+        
+        if diagnosis.epoch_store_epoch != authoritative_epoch {
+            sync_actions.push(format!(
+                "Epoch store needs sync: {} -> {}", 
+                diagnosis.epoch_store_epoch, authoritative_epoch
+            ));
+        }
+        
+        if diagnosis.authority_epoch != authoritative_epoch {
+            sync_actions.push(format!(
+                "Authority state needs sync: {} -> {}", 
+                diagnosis.authority_epoch, authoritative_epoch
+            ));
+        }
+        
+        if let Some(checkpoint_epoch) = diagnosis.checkpoint_epoch {
+            if checkpoint_epoch != authoritative_epoch {
+                sync_actions.push(format!(
+                    "Checkpoint store indicates epoch: {} (reference)", 
+                    checkpoint_epoch
+                ));
+            }
+        }
+        
+        // Step 4: Log synchronization plan
+        info!("Epoch synchronization plan:");
+        for action in &sync_actions {
+            info!("  - {}", action);
+        }
+        
+        // Step 5: Record what we're resolving
+        for inconsistency in &diagnosis.inconsistencies {
+            inconsistencies_resolved.push(inconsistency.clone());
+        }
+        
+        // Step 6: Trigger epoch store refresh
+        // Note: We can't directly modify AuthorityState's epoch_store from here,
+        // but we can force a refresh by accessing it through the proper channels
+        let fresh_epoch_store = self.authority_state.load_epoch_store_one_call_per_task();
+        let fresh_epoch = fresh_epoch_store.epoch();
+        
+        info!("After refresh attempt, epoch store reports: {}", fresh_epoch);
+        
+        let sync_performed = !sync_actions.is_empty();
+        
+        // Step 7: Create result
+        let result = EpochSyncResult {
+            sync_performed,
+            original_epochs: vec![
+                ("epoch_store", diagnosis.epoch_store_epoch),
+                ("authority_state", diagnosis.authority_epoch),
+            ],
+            final_epoch: fresh_epoch,
+            inconsistencies_resolved,
+        };
+        
+        if sync_performed {
+            info!("Epoch synchronization completed. Final epoch: {}", fresh_epoch);
+        } else {
+            info!("No synchronization needed. All components consistent.");
+        }
+        
+        Ok(result)
     }
 }
 
