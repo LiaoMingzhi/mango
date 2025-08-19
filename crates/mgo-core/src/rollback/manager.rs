@@ -972,11 +972,30 @@ impl RollbackManager {
     pub async fn get_current_epoch(&self) -> Result<u64> {
         debug!("Getting current epoch");
         
-        // Get epoch from authority state
-        let epoch = self.authority_state.current_epoch_for_testing();
+        // First try to get epoch from the latest checkpoint to ensure we get the real running epoch
+        let latest_checkpoint_epoch = match self.checkpoint_store.get_highest_executed_checkpoint_seq_number() {
+            Ok(Some(seq)) => {
+                match self.checkpoint_store.get_checkpoint_by_sequence_number(seq) {
+                    Ok(Some(checkpoint)) => {
+                        let checkpoint_epoch = checkpoint.epoch();
+                        debug!("Latest checkpoint epoch: {}", checkpoint_epoch);
+                        Some(checkpoint_epoch)
+                    }
+                    _ => None
+                }
+            }
+            _ => None
+        };
         
-        debug!("Current epoch: {}", epoch);
-        Ok(epoch)
+        // Get epoch from authority state as fallback
+        let authority_epoch = self.authority_state.current_epoch_for_testing();
+        debug!("Authority state epoch: {}", authority_epoch);
+        
+        // Use the maximum of both to ensure we have the most current epoch
+        let current_epoch = latest_checkpoint_epoch.unwrap_or(authority_epoch).max(authority_epoch);
+        
+        debug!("Final current epoch: {}", current_epoch);
+        Ok(current_epoch)
     }
 
     /// Rollback to a specific epoch
