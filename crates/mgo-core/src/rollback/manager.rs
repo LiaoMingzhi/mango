@@ -18,6 +18,37 @@ use prometheus::IntCounter;
 use crate::authority::AuthorityState;
 use crate::checkpoints::CheckpointStore;
 use crate::authority_client::NetworkAuthorityClient;
+
+/// Report for epoch consistency diagnosis
+#[derive(Debug, Clone)]
+pub struct EpochConsistencyReport {
+    pub is_consistent: bool,
+    pub epoch_store_epoch: u64,
+    pub authority_epoch: u64,
+    pub checkpoint_epoch: Option<u64>,
+    pub committee_epoch: Option<u64>,
+    pub recommended_epoch: u64,
+    pub inconsistencies: Vec<String>,
+}
+
+/// Status of rollback verification
+#[derive(Debug, Clone, PartialEq)]
+pub enum RollbackVerificationStatus {
+    Success,
+    PartialSuccess,
+    Failed,
+}
+
+/// Result of rollback verification
+#[derive(Debug, Clone)]
+pub struct RollbackVerificationResult {
+    pub status: RollbackVerificationStatus,
+    pub target_checkpoint: u64,
+    pub current_checkpoint: u64,
+    pub rollback_successful: bool,
+    pub epoch_consistency: EpochConsistencyReport,
+    pub verification_issues: Vec<String>,
+}
 use crate::rollback::types::*;
 use crate::rollback::analysis::RollbackAnalysis;
 use crate::rollback::consensus::{RollbackConsensus, VerifiedCheckpoint};
@@ -970,9 +1001,9 @@ impl RollbackManager {
     /// Get current epoch from authority state
     #[instrument(level = "debug", skip(self))]
     pub async fn get_current_epoch(&self) -> Result<u64> {
-        debug!("Getting current epoch");
+        debug!("Getting current epoch with comprehensive checks");
         
-        // First try to get epoch from the latest checkpoint to ensure we get the real running epoch
+        // 1. Get epoch from the latest checkpoint (most reliable source)
         let latest_checkpoint_epoch = match self.checkpoint_store.get_highest_executed_checkpoint_seq_number() {
             Ok(Some(seq)) => {
                 match self.checkpoint_store.get_checkpoint_by_sequence_number(seq) {
@@ -987,15 +1018,51 @@ impl RollbackManager {
             _ => None
         };
         
-        // Get epoch from authority state as fallback
+        // 2. Get epoch from current epoch store (direct access)
+        let epoch_store_epoch = {
+            let epoch_store = self.authority_state.epoch_store_for_testing();
+            let epoch = epoch_store.epoch();
+            debug!("Current epoch store epoch: {}", epoch);
+            epoch
+        };
+        
+        // 3. Get epoch from authority state method (for comparison)
         let authority_epoch = self.authority_state.current_epoch_for_testing();
-        debug!("Authority state epoch: {}", authority_epoch);
+        debug!("Authority state current_epoch_for_testing: {}", authority_epoch);
         
-        // Use the maximum of both to ensure we have the most current epoch
-        let current_epoch = latest_checkpoint_epoch.unwrap_or(authority_epoch).max(authority_epoch);
+        // 4. Try to get epoch from committee store (another source)
+        let committee_epoch = {
+            let committee = self.authority_state.committee_store().get_latest_committee();
+            let epoch = committee.epoch;
+            debug!("Latest committee epoch: {}", epoch);
+            Some(epoch)
+        };
         
-        debug!("Final current epoch: {}", current_epoch);
-        Ok(current_epoch)
+        // Determine the most reliable epoch
+        let candidates = vec![
+            ("latest_checkpoint", latest_checkpoint_epoch),
+            ("committee", committee_epoch),
+        ];
+        
+        let mut max_epoch = epoch_store_epoch.max(authority_epoch);
+        
+        for (source, epoch_opt) in candidates {
+            if let Some(epoch) = epoch_opt {
+                debug!("Epoch from {}: {}", source, epoch);
+                max_epoch = max_epoch.max(epoch);
+            }
+        }
+        
+        debug!("Final determined epoch: {} (epoch_store: {}, authority: {}, max_from_checkpoints: {:?})", 
+               max_epoch, epoch_store_epoch, authority_epoch, latest_checkpoint_epoch);
+        
+        // Log any inconsistencies for debugging
+        if epoch_store_epoch != authority_epoch {
+            warn!("Epoch inconsistency detected: epoch_store={}, authority_state={}", 
+                  epoch_store_epoch, authority_epoch);
+        }
+        
+        Ok(max_epoch)
     }
 
     /// Rollback to a specific epoch
@@ -1118,6 +1185,131 @@ impl RollbackManager {
         }
         
         Ok((earliest_epoch, current_epoch))
+    }
+    
+    /// Comprehensive epoch consistency check and diagnosis
+    #[instrument(level = "debug", skip(self))]
+    pub async fn diagnose_epoch_consistency(&self) -> Result<EpochConsistencyReport> {
+        debug!("Starting comprehensive epoch consistency diagnosis");
+        
+        // Collect epoch information from all sources
+        let checkpoint_epoch = match self.checkpoint_store.get_highest_executed_checkpoint_seq_number() {
+            Ok(Some(seq)) => {
+                match self.checkpoint_store.get_checkpoint_by_sequence_number(seq) {
+                    Ok(Some(checkpoint)) => Some(checkpoint.epoch()),
+                    _ => None
+                }
+            }
+            _ => None
+        };
+        
+        let epoch_store_epoch = self.authority_state.epoch_store_for_testing().epoch();
+        let authority_epoch = self.authority_state.current_epoch_for_testing();
+        
+        let committee_epoch = {
+            let committee = self.authority_state.committee_store().get_latest_committee();
+            Some(committee.epoch)
+        };
+        
+        // Check for inconsistencies
+        let mut inconsistencies = Vec::new();
+        let epochs = vec![
+            ("checkpoint", checkpoint_epoch),
+            ("committee", committee_epoch),
+        ];
+        
+        let _primary_epochs = vec![
+            ("epoch_store", epoch_store_epoch),
+            ("authority_state", authority_epoch),
+        ];
+        
+        // Check for primary inconsistencies (most critical)
+        if epoch_store_epoch != authority_epoch {
+            inconsistencies.push(format!(
+                "CRITICAL: epoch_store ({}) != authority_state ({})", 
+                epoch_store_epoch, authority_epoch
+            ));
+        }
+        
+        // Check for secondary inconsistencies
+        for (name, epoch_opt) in epochs {
+            if let Some(epoch) = epoch_opt {
+                if epoch != epoch_store_epoch {
+                    inconsistencies.push(format!(
+                        "WARNING: {} ({}) != epoch_store ({})", 
+                        name, epoch, epoch_store_epoch
+                    ));
+                }
+            }
+        }
+        
+        let is_consistent = inconsistencies.is_empty();
+        let recommended_epoch = checkpoint_epoch.unwrap_or(epoch_store_epoch).max(epoch_store_epoch);
+        
+        Ok(EpochConsistencyReport {
+            is_consistent,
+            epoch_store_epoch,
+            authority_epoch,
+            checkpoint_epoch,
+            committee_epoch,
+            recommended_epoch,
+            inconsistencies,
+        })
+    }
+    
+    /// Enhanced verification of rollback results based on actual database state
+    #[instrument(level = "debug", skip(self))]
+    pub async fn verify_rollback_completion(&self, target_checkpoint: u64) -> Result<RollbackVerificationResult> {
+        debug!("Verifying rollback completion to checkpoint {}", target_checkpoint);
+        
+        // Get current state after rollback
+        let current_highest = self.checkpoint_store.get_highest_executed_checkpoint_seq_number()?;
+        let current_seq = current_highest.unwrap_or(0);
+        
+        // Check if rollback actually occurred
+        let rollback_successful = current_seq <= target_checkpoint;
+        
+        // Get epoch consistency diagnosis
+        let epoch_report = self.diagnose_epoch_consistency().await?;
+        
+        // Verify database consistency
+        let mut verification_issues = Vec::new();
+        
+        // Check checkpoint store consistency
+        if let Ok(Some(checkpoint)) = self.checkpoint_store.get_checkpoint_by_sequence_number(current_seq.into()) {
+            let checkpoint_epoch = checkpoint.epoch();
+            
+            // Compare with authority state
+            if checkpoint_epoch != epoch_report.epoch_store_epoch {
+                verification_issues.push(format!(
+                    "Checkpoint epoch ({}) != authority epoch ({})", 
+                    checkpoint_epoch, epoch_report.epoch_store_epoch
+                ));
+            }
+        }
+        
+        // Check if epoch inconsistencies were resolved
+        if !epoch_report.is_consistent {
+            verification_issues.push("Epoch inconsistencies still present after rollback".to_string());
+            verification_issues.extend(epoch_report.inconsistencies.clone());
+        }
+        
+        let verification_status = if rollback_successful && verification_issues.is_empty() {
+            RollbackVerificationStatus::Success
+        } else if rollback_successful {
+            RollbackVerificationStatus::PartialSuccess
+        } else {
+            RollbackVerificationStatus::Failed
+        };
+        
+        Ok(RollbackVerificationResult {
+            status: verification_status,
+            target_checkpoint,
+            current_checkpoint: current_seq,
+            rollback_successful,
+            epoch_consistency: epoch_report,
+            verification_issues,
+        })
     }
 }
 
