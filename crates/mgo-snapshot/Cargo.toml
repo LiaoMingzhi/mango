@@ -1,36 +1,76 @@
 [package]
 name = "mgo-snapshot"
 version = "0.1.0"
-edition = "2021"
-publish = false
+authors = ["Mango Team <team@mango.io>"]
 license = "Apache-2.0"
-authors = ["MangoNet Labs <build@mangonetlabs.com>"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition = "2021"
+description = "Mango blockchain snapshot-based rollback system"
 
 [dependencies]
-integer-encoding.workspace = true
-indicatif.workspace = true
-anyhow.workspace = true
-serde.workspace = true
-bcs.workspace = true
-byteorder.workspace = true
-tracing.workspace = true
-bytes.workspace = true
-tokio-stream.workspace = true
-num_enum.workspace = true
-futures.workspace = true
-object_store.workspace = true
-prometheus.workspace = true
-mgo-types.workspace = true
-mgo-config.workspace = true
-mgo-core.workspace = true
-mgo-storage.workspace = true
-mgo-protocol-config.workspace = true
-fastcrypto = { workspace = true, features = ["copy_key"] }
-tokio = { workspace = true, features = ["full"] }
-workspace-hack.workspace = true
-serde_json.workspace = true
+# Core async runtime
+tokio = { version = "1.32", features = ["full"] }
+tokio-stream = "0.1"
+
+# Serialization and data handling
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+bincode = "1.3"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and metrics
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Compression
+zstd = { version = "0.13", optional = true }
+lz4_flex = { version = "0.11", optional = true }
+
+# Cryptography and hashing
+blake3 = "1.5"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# File system operations
+tempfile = "3.8"
+flate2 = { version = "1.0", optional = true }
+
+# Concurrency
+parking_lot = "0.12"
+arc-swap = "1.6"
+async-trait = "0.1"
+
+# Configuration
+config = "0.14"
+
+# UUID generation
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Byte utilities
+bytes = "1.5"
+
+# Mango dependencies
+mgo-types = { path = "../mgo-types" }
+mgo-core = { path = "../mgo-core" }
+mgo-config = { path = "../mgo-config" }
+mgo-storage = { path = "../mgo-storage" }
+shared-crypto = { path = "../shared-crypto", optional = true }
 
 [dev-dependencies]
-tempfile.workspace = true
+tempfile = "3.8"
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+
+[features]
+default = ["compression", "encryption"]
+compression = ["dep:zstd", "dep:lz4_flex", "dep:flate2"]
+encryption = ["dep:shared-crypto"]
+distributed = []
+test-utils = []
