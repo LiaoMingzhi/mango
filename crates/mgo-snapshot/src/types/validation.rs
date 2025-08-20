@@ -68,6 +68,11 @@ impl ValidationResult {
             && self.dependencies.valid
     }
 
+    /// Get total number of issues
+    pub fn get_total_issues(&self) -> usize {
+        self.errors.len() + self.warnings.len()
+    }
+
     /// Get summary of validation issues
     pub fn get_issue_summary(&self) -> String {
         let mut summary = Vec::new();

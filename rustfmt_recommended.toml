@@ -1,0 +1,40 @@
+# Rust 代码格式化配置
+edition = "2024"
+
+# 基础格式化设置
+max_width = 100                    # 行宽限制，适合现代宽屏
+hard_tabs = false                  # 使用空格而不是制表符
+tab_spaces = 4                     # 缩进空格数
+
+# 字段和结构体格式化
+use_field_init_shorthand = true    # 字段初始化简写 { x, y } 而不是 { x: x, y: y }
+struct_field_align_threshold = 20  # 结构体字段对齐阈值
+
+# 导入组织
+imports_granularity = "Crate"      # 按 crate 分组导入
+group_imports = "StdExternalCrate" # 标准库、外部crate、本地crate分组
+imports_indent = "Block"           # 导入缩进样式
+
+# 函数和方法格式化
+fn_args_layout = "Tall"            # 函数参数垂直布局（当超过行宽时）
+brace_style = "SameLineWhere"      # 大括号样式
+where_single_line = true           # 单行 where 子句
+
+# 字符串和注释
+format_strings = true              # 格式化字符串字面量
+format_macro_matchers = true       # 格式化宏匹配器
+normalize_comments = true          # 标准化注释格式
+wrap_comments = true               # 自动换行注释
+
+# 控制流
+match_block_trailing_comma = true # match 块尾随逗号
+trailing_comma = "Vertical"        # 垂直列表尾随逗号
+
+# 空行处理
+blank_lines_upper_bound = 2        # 最大连续空行数
+blank_lines_lower_bound = 0        # 最小空行数
+
+# 其他
+reorder_impl_items = true          # 重新排序 impl 项目
+format_code_in_doc_comments = true # 格式化文档注释中的代码
+unstable_features = false          # 不使用不稳定特性

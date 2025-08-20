@@ -47,6 +47,7 @@ struct LiveObjectSetWriterV1 {
     files: Vec<FileMetadata>,
     sender: Option<Sender<FileMetadata>>,
     file_compression: FileCompression,
+    epoch_num: u64,
 }
 
 impl LiveObjectSetWriterV1 {
@@ -55,6 +56,7 @@ impl LiveObjectSetWriterV1 {
         bucket_num: u32,
         file_compression: FileCompression,
         sender: Sender<FileMetadata>,
+        epoch_num: u64,
     ) -> Result<Self> {
         let part_num = 1;
         let (n, obj_file) = Self::object_file(dir_path.clone(), bucket_num, part_num)?;
@@ -69,6 +71,7 @@ impl LiveObjectSetWriterV1 {
             files: vec![],
             sender: Some(sender),
             file_compression,
+            epoch_num,
         })
     }
     pub fn write(&mut self, object: &LiveObject) -> Result<()> {
@@ -124,7 +127,8 @@ impl LiveObjectSetWriterV1 {
             self.file_compression,
             FileType::Object,
             self.bucket_num,
-            self.current_part_num,
+            self.current_part_num as u16,
+            self.epoch_num,
         )?;
         self.files.push(file_metadata.clone());
         if let Some(sender) = &self.sender {
@@ -145,7 +149,8 @@ impl LiveObjectSetWriterV1 {
             self.file_compression,
             FileType::Reference,
             self.bucket_num,
-            self.current_part_num,
+            self.current_part_num as u16,
+            self.epoch_num,
         )?;
         self.files.push(file_metadata.clone());
         if let Some(sender) = &self.sender {
@@ -213,6 +218,7 @@ pub struct StateSnapshotWriterV1 {
 }
 
 impl StateSnapshotWriterV1 {
+    /// Create a new writer from existing object stores
     pub async fn new_from_store(
         local_staging_path: &std::path::Path,
         local_staging_store: &Arc<DynObjectStore>,
@@ -229,6 +235,7 @@ impl StateSnapshotWriterV1 {
         })
     }
 
+    /// Create a new writer with store configs
     pub async fn new(
         local_store_config: &ObjectStoreConfig,
         remote_store_config: &ObjectStoreConfig,
@@ -251,6 +258,7 @@ impl StateSnapshotWriterV1 {
         })
     }
 
+    /// Write snapshot for the given epoch
     pub async fn write(
         self,
         epoch: u64,
@@ -323,12 +331,12 @@ impl StateSnapshotWriterV1 {
         let remote_object_store = self.remote_object_store.clone();
         let local_staging_store = self.local_staging_store.clone();
         let local_dir_path = self.local_staging_dir.clone();
-        let epoch_dir = self.epoch_dir(epoch);
+        let _epoch_dir = self.epoch_dir(epoch);
         let upload_concurrency = self.concurrency;
         let join_handle = tokio::spawn(async move {
             let results: Vec<Result<(), anyhow::Error>> = ReceiverStream::new(receiver)
                 .map(|file_metadata| {
-                    let file_path = file_metadata.file_path(&epoch_dir);
+                    let file_path = file_metadata.file_path();
                     let remote_object_store = remote_object_store.clone();
                     let local_object_store = local_staging_store.clone();
                     let local_dir_path = local_dir_path.clone();
@@ -376,6 +384,7 @@ impl StateSnapshotWriterV1 {
                     bucket_num,
                     self.file_compression,
                     sender.clone(),
+                    epoch,
                 )?);
             }
             let writer = object_writers

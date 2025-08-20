@@ -21,11 +21,14 @@ use mgo_storage::object_store::util::{
 use mgo_storage::FileCompression;
 use tracing::{debug, error, info};
 
+/// Metrics for state snapshot uploader
 pub struct StateSnapshotUploaderMetrics {
+    /// Gauge for first missing state snapshot epoch
     pub first_missing_state_snapshot_epoch: IntGauge,
 }
 
 impl StateSnapshotUploaderMetrics {
+    /// Create new uploader metrics
     pub fn new(registry: &Registry) -> Arc<Self> {
         let this = Self {
             first_missing_state_snapshot_epoch: register_int_gauge_with_registry!(
@@ -39,6 +42,7 @@ impl StateSnapshotUploaderMetrics {
     }
 }
 
+/// State snapshot uploader for uploading snapshots to remote storage
 pub struct StateSnapshotUploader {
     /// Directory path on local disk where db checkpoints are stored
     db_checkpoint_path: PathBuf,
@@ -56,6 +60,7 @@ pub struct StateSnapshotUploader {
 }
 
 impl StateSnapshotUploader {
+    /// Create a new state snapshot uploader
     pub fn new(
         db_checkpoint_path: &std::path::Path,
         staging_path: &std::path::Path,
@@ -84,6 +89,7 @@ impl StateSnapshotUploader {
         }))
     }
 
+    /// Start the uploader background task
     pub fn start(self: Arc<Self>) -> tokio::sync::broadcast::Sender<()> {
         let (kill_sender, _kill_receiver) = tokio::sync::broadcast::channel::<()>(1);
         tokio::task::spawn(Self::run_upload_loop(self.clone(), kill_sender.subscribe()));

@@ -8,8 +8,8 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::{Buf, Bytes};
-use fastcrypto::hash::MultisetHash;
-use fastcrypto::hash::{HashFunction, Sha3_256};
+
+use fastcrypto::hash::{HashFunction, MultisetHash, Sha3_256};
 use futures::future::{AbortRegistration, Abortable};
 use futures::{StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -38,8 +38,11 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 use tracing::{error, info};
 
+/// Snapshot checksums type alias
 pub type SnapshotChecksums = (DigestByBucketAndPartition, Accumulator);
+/// Digest mapping by bucket and partition
 pub type DigestByBucketAndPartition = BTreeMap<u32, BTreeMap<u32, [u8; 32]>>;
+/// State snapshot reader version 1
 pub struct StateSnapshotReaderV1 {
     epoch: u64,
     local_staging_dir_root: PathBuf,
@@ -113,23 +116,23 @@ impl StateSnapshotReaderV1 {
                     let entry = object_files
                         .entry(file_metadata.bucket_num)
                         .or_insert_with(BTreeMap::new);
-                    entry.insert(file_metadata.part_num, file_metadata.clone());
+                    entry.insert(file_metadata.part_num as u32, file_metadata.clone());
                 }
                 FileType::Reference => {
                     let entry = ref_files
                         .entry(file_metadata.bucket_num)
                         .or_insert_with(BTreeMap::new);
-                    entry.insert(file_metadata.part_num, file_metadata.clone());
+                    entry.insert(file_metadata.part_num as u32, file_metadata.clone());
                 }
             }
         }
-        let epoch_dir_path = Path::from(epoch_dir);
+        let _epoch_dir_path = Path::from(epoch_dir);
         let files: Vec<Path> = ref_files
             .values()
             .flat_map(|entry| {
                 let files: Vec<_> = entry
                     .values()
-                    .map(|file_metadata| file_metadata.file_path(&epoch_dir_path))
+                    .map(|file_metadata| file_metadata.file_path())
                     .collect();
                 files
             })
@@ -362,8 +365,8 @@ impl StateSnapshotReaderV1 {
             async move {
                 futures::stream::iter(input_files.iter())
                     .map(|(bucket, (part_num, file_metadata))| {
-                        let epoch_dir = epoch_dir.clone();
-                        let file_path = file_metadata.file_path(&epoch_dir);
+                        let _epoch_dir = epoch_dir.clone();
+                        let file_path = file_metadata.file_path();
                         let remote_object_store = remote_object_store.clone();
                         let sha3_digests_cloned = sha3_digests.clone();
                         async move {
@@ -381,7 +384,7 @@ impl StateSnapshotReaderV1 {
                                     Err(err) => {
                                         error!(
                                             "Obj {} .get failed (attempt {}): {}",
-                                            file_metadata.file_path(&epoch_dir),
+                                            file_metadata.file_path(),
                                             attempts,
                                             err,
                                         );

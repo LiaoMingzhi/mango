@@ -40,9 +40,17 @@ pub enum SnapshotError {
     #[error("Snapshot not found: {id}")]
     SnapshotNotFound { id: String },
 
+    /// State collection errors
+    #[error("State collection failed for component {component}: {details}")]
+    StateCollection { component: String, details: String },
+
     /// Invalid snapshot format
     #[error("Invalid snapshot format: {reason}")]
     InvalidFormat { reason: String },
+
+    /// Storage operation errors
+    #[error("Storage error: {source}")]
+    StorageError { #[source] source: Box<dyn std::error::Error + Send + Sync> },
 
     /// Storage backend errors
     #[error("Storage backend error: {0}")]
@@ -175,6 +183,20 @@ impl From<SnapshotError> for StorageError {
             other => StorageError::DataCorruption {
                 details: format!("Snapshot error: {}", other),
             },
+        }
+    }
+}
+
+impl From<prometheus::Error> for SnapshotError {
+    fn from(err: prometheus::Error) -> Self {
+        Self::Configuration(format!("Prometheus metrics error: {}", err))
+    }
+}
+
+impl From<bcs::Error> for SnapshotError {
+    fn from(err: bcs::Error) -> Self {
+        Self::InvalidFormat {
+            reason: format!("BCS serialization error: {}", err),
         }
     }
 }

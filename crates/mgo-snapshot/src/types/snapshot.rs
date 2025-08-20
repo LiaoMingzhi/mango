@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Unique identifier for a snapshot
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SnapshotId(pub Uuid);
 
 impl SnapshotId {
@@ -65,7 +65,7 @@ impl std::fmt::Display for ClusterSnapshotId {
 }
 
 /// Types of snapshots that can be created
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SnapshotType {
     /// Full snapshot containing all component states
     Full {
@@ -89,8 +89,19 @@ pub enum SnapshotType {
     },
 }
 
+impl std::fmt::Display for SnapshotType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SnapshotType::Full { .. } => write!(f, "full"),
+            SnapshotType::Incremental { .. } => write!(f, "incremental"),
+            SnapshotType::Checkpoint { .. } => write!(f, "checkpoint"),
+            SnapshotType::Epoch { .. } => write!(f, "epoch"),
+        }
+    }
+}
+
 /// Compression levels for snapshot data
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CompressionLevel {
     None,
     Low,
@@ -120,60 +131,30 @@ pub enum ComponentType {
 /// Complete snapshot data containing all component states
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotData {
-    /// Authority state data
-    pub authority_state: Vec<u8>,
-    /// Epoch store data
-    pub epoch_store: Vec<u8>,
-    /// Checkpoint store data
-    pub checkpoint_store: Vec<u8>,
-    /// Consensus state data
-    pub consensus_state: Vec<u8>,
-    /// Transaction store data
-    pub transaction_store: Vec<u8>,
-    /// Object store data
-    pub object_store: Vec<u8>,
-    /// Index store data (optional)
-    pub index_store: Option<Vec<u8>>,
-    /// Checkpoint sequence number
-    pub checkpoint_seq: u64,
-    /// Epoch number
-    pub epoch: u64,
-    /// Creation timestamp
-    pub created_at: DateTime<Utc>,
+    /// Snapshot metadata
+    pub metadata: SnapshotMetadata,
+    /// Serialized snapshot data
+    pub data: Vec<u8>,
 }
 
 impl SnapshotData {
-    /// Create new empty snapshot data
-    pub fn new() -> Self {
-        Self {
-            authority_state: Vec::new(),
-            epoch_store: Vec::new(),
-            checkpoint_store: Vec::new(),
-            consensus_state: Vec::new(),
-            transaction_store: Vec::new(),
-            object_store: Vec::new(),
-            index_store: None,
-            checkpoint_seq: 0,
-            epoch: 0,
-            created_at: Utc::now(),
-        }
+    /// Create new snapshot data with metadata and data
+    pub fn new(metadata: SnapshotMetadata, data: Vec<u8>) -> Self {
+        Self { metadata, data }
     }
 
     /// Calculate total size of snapshot data
     pub fn total_size(&self) -> usize {
-        self.authority_state.len()
-            + self.epoch_store.len()
-            + self.checkpoint_store.len()
-            + self.consensus_state.len()
-            + self.transaction_store.len()
-            + self.object_store.len()
-            + self.index_store.as_ref().map_or(0, |data| data.len())
+        self.data.len()
     }
 }
 
 impl Default for SnapshotData {
     fn default() -> Self {
-        Self::new()
+        Self {
+            metadata: SnapshotMetadata::default(),
+            data: Vec::new(),
+        }
     }
 }
 
@@ -184,8 +165,8 @@ pub struct SnapshotMetadata {
     pub id: SnapshotId,
     /// Type of snapshot
     pub snapshot_type: SnapshotType,
-    /// Checkpoint sequence number
-    pub checkpoint_seq: u64,
+    /// Checkpoint sequence number (optional for non-checkpoint snapshots)
+    pub checkpoint_seq: Option<u64>,
     /// Epoch number
     pub epoch: u64,
     /// Creation timestamp
@@ -202,6 +183,14 @@ pub struct SnapshotMetadata {
     pub checksum_algorithm: ChecksumAlgorithm,
     /// Version of the snapshot format
     pub format_version: u32,
+    /// Components included in this snapshot
+    pub components: Vec<ComponentType>,
+    /// Whether the snapshot is compressed
+    pub compressed: bool,
+    /// Whether the snapshot is encrypted
+    pub encrypted: bool,
+    /// Additional custom metadata
+    pub custom_metadata: HashMap<String, String>,
     /// Additional custom tags
     pub tags: HashMap<String, String>,
     /// Node ID that created this snapshot
@@ -213,8 +202,9 @@ impl SnapshotMetadata {
     pub fn new(
         id: SnapshotId,
         snapshot_type: SnapshotType,
-        checkpoint_seq: u64,
+        checkpoint_seq: Option<u64>,
         epoch: u64,
+        components: Vec<ComponentType>,
     ) -> Self {
         Self {
             id,
@@ -228,6 +218,10 @@ impl SnapshotMetadata {
             checksum: String::new(),
             checksum_algorithm: ChecksumAlgorithm::Blake3,
             format_version: 1,
+            components,
+            compressed: false,
+            encrypted: false,
+            custom_metadata: HashMap::new(),
             tags: HashMap::new(),
             created_by_node: None,
         }
@@ -247,6 +241,30 @@ impl SnapshotMetadata {
         } else {
             1.0
         };
+    }
+}
+
+impl Default for SnapshotMetadata {
+    fn default() -> Self {
+        Self {
+            id: SnapshotId::new(),
+            snapshot_type: SnapshotType::Full { include_history: false, compression_level: CompressionLevel::Medium },
+            checkpoint_seq: None,
+            epoch: 0,
+            created_at: Utc::now(),
+            uncompressed_size: 0,
+            compressed_size: 0,
+            compression_ratio: 1.0,
+            checksum: String::new(),
+            checksum_algorithm: ChecksumAlgorithm::Blake3,
+            format_version: 1,
+            components: Vec::new(),
+            compressed: false,
+            encrypted: false,
+            custom_metadata: HashMap::new(),
+            tags: HashMap::new(),
+            created_by_node: None,
+        }
     }
 }
 
@@ -278,7 +296,7 @@ pub struct SnapshotInfo {
 }
 
 /// Filter criteria for listing snapshots
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SnapshotFilter {
     /// Filter by snapshot type
     pub snapshot_type: Option<SnapshotType>,

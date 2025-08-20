@@ -56,11 +56,31 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 # Byte utilities
 bytes = "1.5"
 
+# HTTP and API
+axum = { version = "0.6", features = ["json", "tokio"] }
+tower = "0.4"
+tower-http = { version = "0.4", features = ["cors", "trace"] }
+hyper = { version = "0.14", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"], default-features = false }
+
+# Additional dependencies for existing modules (backward compatibility)
+integer-encoding = { workspace = true }
+indicatif = { workspace = true }
+bcs = { workspace = true }
+byteorder = { workspace = true }
+num_enum = { workspace = true }
+futures = { workspace = true }
+object_store = { workspace = true }
+prometheus = { workspace = true }
+typed-store = { workspace = true }
+fastcrypto = { workspace = true, features = ["copy_key"] }
+
 # Mango dependencies
 mgo-types = { path = "../mgo-types" }
 mgo-core = { path = "../mgo-core" }
 mgo-config = { path = "../mgo-config" }
 mgo-storage = { path = "../mgo-storage" }
+mgo-protocol-config = { path = "../mgo-protocol-config" }
 shared-crypto = { path = "../shared-crypto", optional = true }
 
 [dev-dependencies]
@@ -69,8 +89,10 @@ tokio-test = "0.4"
 pretty_assertions = "1.4"
 
 [features]
-default = ["compression", "encryption"]
+default = ["compression", "encryption", "api", "metrics"]
 compression = ["dep:zstd", "dep:lz4_flex", "dep:flate2"]
 encryption = ["dep:shared-crypto"]
 distributed = []
+api = []
+metrics = []
 test-utils = []

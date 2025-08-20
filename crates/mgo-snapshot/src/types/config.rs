@@ -258,6 +258,16 @@ pub struct PerformanceConfig {
     pub use_memory_mapping: bool,
     /// Maximum memory usage for snapshots (bytes)
     pub max_memory_usage: u64,
+    /// Maximum number of objects to include in a snapshot
+    pub max_objects_per_snapshot: Option<usize>,
+    /// Maximum number of transactions to include in a snapshot
+    pub max_transactions_per_snapshot: Option<usize>,
+    /// Maximum number of effects to include in a snapshot
+    pub max_effects_per_snapshot: Option<usize>,
+    /// Maximum number of events to include in a snapshot
+    pub max_events_per_snapshot: Option<usize>,
+    /// Maximum number of checkpoints to include in a snapshot
+    pub max_checkpoints_per_snapshot: Option<usize>,
 }
 
 impl Default for PerformanceConfig {
@@ -270,6 +280,11 @@ impl Default for PerformanceConfig {
             io_buffer_size: 64 * 1024,      // 64KB
             use_memory_mapping: true,
             max_memory_usage: 8 * 1024 * 1024 * 1024, // 8GB
+            max_objects_per_snapshot: Some(1_000_000),
+            max_transactions_per_snapshot: Some(1_000_000),
+            max_effects_per_snapshot: Some(1_000_000),
+            max_events_per_snapshot: Some(500_000),
+            max_checkpoints_per_snapshot: Some(10_000),
         }
     }
 }
@@ -322,7 +337,7 @@ pub struct RestoreOptions {
 }
 
 /// Validation levels for restore operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ValidationLevel {
     None,
     Basic,

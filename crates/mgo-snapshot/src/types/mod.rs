@@ -6,6 +6,7 @@
 pub mod snapshot;
 pub mod storage;
 pub mod validation;
+pub mod restore;
 pub mod error;
 pub mod config;
 
@@ -16,5 +17,6 @@ pub use validation::{
     DataIntegrityResult, BusinessLogicResult, DependencyResult, IntegrityIssue,
     IntegrityIssueType, BusinessLogicViolation, IssueSeverity, RepairResult, RepairType, RepairOptions
 };
+pub use restore::{RestoreOptions, RestoreResult, RestoreSnapshotRequest};
 pub use error::*;
 pub use config::*;
