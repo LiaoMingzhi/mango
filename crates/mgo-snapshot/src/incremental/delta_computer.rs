@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, warn, instrument};
 
 use mgo_types::base_types::EpochId;
 
@@ -139,26 +139,42 @@ impl DeltaComputer {
     async fn compute_transaction_delta(
         &self,
         base_snapshot_data: &SnapshotData,
-        _target_checkpoint: Option<CheckpointSequenceNumber>,
+                _target_checkpoint: Option<CheckpointSequenceNumber>,
     ) -> Result<TransactionDelta, SnapshotError> {
         debug!("Computing transaction delta");
 
-        let mut delta = TransactionDelta::new();
+        let mut _delta = TransactionDelta::new();
 
-        // Get base transaction state - try to deserialize as TransactionStoreSnapshot  
+        // Get base transaction state - try to deserialize as TransactionStoreSnapshot
         let _base_transactions = if let Ok(base_snapshot) = bcs::from_bytes::<TransactionStoreSnapshot>(&base_snapshot_data.data) {
             base_snapshot.transactions.into_iter().map(|tx| (tx.digest, tx)).collect::<HashMap<_, _>>()
         } else {
             HashMap::new()
         };
 
-        // For now, assume all current transactions are new
-        // In practice, would need better transaction iteration APIs
-        delta.new_transactions = Vec::new(); // Placeholder
-        delta.new_effects = Vec::new(); // Placeholder
-        delta.new_events = Vec::new(); // Placeholder
+        let _base_effects = if let Ok(base_snapshot) = bcs::from_bytes::<TransactionStoreSnapshot>(&base_snapshot_data.data) {
+            base_snapshot.effects.into_iter().map(|eff| (eff.digest, eff)).collect::<HashMap<_, _>>()
+        } else {
+            HashMap::new()
+        };
 
-        Ok(delta)
+        let _base_events = if let Ok(base_snapshot) = bcs::from_bytes::<TransactionStoreSnapshot>(&base_snapshot_data.data) {
+            base_snapshot.events.into_iter().map(|evt| (evt.digest, evt)).collect::<HashMap<_, _>>()
+        } else {
+            HashMap::new()
+        };
+
+        // Collect current transactions within the target checkpoint range
+        let _limit = 10000; // Limit to avoid memory issues
+        // TODO: Transaction iteration requires access to private fields
+        warn!("Transaction delta computation not yet implemented due to API limitations");
+        
+        // For now, return empty delta
+        Ok(TransactionDelta {
+            new_transactions: vec![],
+            new_effects: vec![],
+            new_events: vec![],
+        })
     }
 
     /// Compute checkpoint store delta

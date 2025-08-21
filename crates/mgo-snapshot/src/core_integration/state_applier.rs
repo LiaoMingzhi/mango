@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use tracing::{debug, info, warn, instrument};
+use tracing::{debug, info, warn, error, instrument};
 
 use mgo_core::authority::authority_store_tables::AuthorityPerpetualTables;
 use mgo_core::checkpoints::CheckpointStore;
@@ -33,6 +33,7 @@ use crate::core_integration::{
     TransactionEntry,
     EffectsEntry,
     EventsEntry,
+    EnhancedStateWriter,
 };
 use crate::types::{ComponentType, SnapshotType, SnapshotData, SnapshotMetadata};
 use crate::types::error::SnapshotError;
@@ -44,6 +45,7 @@ pub struct EnhancedStateApplier {
     authority_state: Arc<AuthorityState>,
     perpetual_tables: Arc<AuthorityPerpetualTables>,
     checkpoint_store: Arc<CheckpointStore>,
+    state_writer: EnhancedStateWriter,
 }
 
 impl EnhancedStateApplier {
@@ -53,11 +55,18 @@ impl EnhancedStateApplier {
         perpetual_tables: Arc<AuthorityPerpetualTables>,
         checkpoint_store: Arc<CheckpointStore>,
     ) -> Self {
+        let state_writer = EnhancedStateWriter::new(
+            authority_state.clone(),
+            perpetual_tables.clone(),
+            checkpoint_store.clone(),
+        );
+        
         Self {
             db_accessor,
             authority_state,
             perpetual_tables,
             checkpoint_store,
+            state_writer,
         }
     }
 
@@ -230,6 +239,34 @@ impl EnhancedStateApplier {
     async fn apply_object_store_data(
         &self,
         component_data: &[u8],
+        options: &RestoreOptions,
+    ) -> Result<u64, SnapshotError> {
+        info!("Applying object store data using enhanced state writer");
+        
+        // Use the enhanced state writer for atomic, batch-based operations
+        match self.state_writer.apply_object_store_data(component_data, options).await {
+            Ok(restored_count) => {
+                info!("Successfully restored {} objects using enhanced writer", restored_count);
+                Ok(restored_count)
+            }
+            Err(e) => {
+                error!("Enhanced object store restoration failed: {}", e);
+                
+                // Fall back to the old method if force_restore is enabled
+                if options.force_restore {
+                    warn!("Falling back to legacy object restoration method");
+                    self.apply_object_store_data_legacy(component_data, options).await
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    /// Legacy object store data application (fallback)
+    async fn apply_object_store_data_legacy(
+        &self,
+        component_data: &[u8],
         _options: &RestoreOptions,
     ) -> Result<u64, SnapshotError> {
         let snapshot: ObjectStoreSnapshot = 
@@ -237,7 +274,7 @@ impl EnhancedStateApplier {
                 reason: format!("Failed to deserialize object store data: {}", e),
             })?;
 
-        info!("Restoring {} objects", snapshot.objects.len());
+        info!("Restoring {} objects using legacy method", snapshot.objects.len());
 
         let mut restored_count = 0u64;
 
@@ -259,6 +296,34 @@ impl EnhancedStateApplier {
     async fn apply_transaction_store_data(
         &self,
         component_data: &[u8],
+        options: &RestoreOptions,
+    ) -> Result<u64, SnapshotError> {
+        info!("Applying transaction store data using enhanced state writer");
+        
+        // Use the enhanced state writer for atomic operations
+        match self.state_writer.apply_transaction_store_data(component_data, options).await {
+            Ok(restored_count) => {
+                info!("Successfully restored {} transaction items using enhanced writer", restored_count);
+                Ok(restored_count)
+            }
+            Err(e) => {
+                error!("Enhanced transaction store restoration failed: {}", e);
+                
+                // Fall back to the old method if force_restore is enabled
+                if options.force_restore {
+                    warn!("Falling back to legacy transaction restoration method");
+                    self.apply_transaction_store_data_legacy(component_data, options).await
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    /// Legacy transaction store data application (fallback)
+    async fn apply_transaction_store_data_legacy(
+        &self,
+        component_data: &[u8],
         _options: &RestoreOptions,
     ) -> Result<u64, SnapshotError> {
         let snapshot: TransactionStoreSnapshot = 
@@ -266,7 +331,7 @@ impl EnhancedStateApplier {
                 reason: format!("Failed to deserialize transaction store data: {}", e),
             })?;
 
-        info!("Restoring {} transactions", snapshot.transactions.len());
+        info!("Restoring {} transactions using legacy method", snapshot.transactions.len());
 
         let mut restored_count = 0u64;
 
@@ -388,7 +453,7 @@ impl EnhancedStateApplier {
     async fn store_object_entry(
         &self,
         obj_entry: &ObjectEntry,
-        _options: &RestoreOptions,
+        options: &RestoreOptions,
     ) -> Result<(), SnapshotError> {
         // Deserialize the object
         let _object: Object = bcs::from_bytes(&obj_entry.object_data)
@@ -396,24 +461,32 @@ impl EnhancedStateApplier {
                 reason: format!("Failed to deserialize object: {}", e),
             })?;
 
-        // This is a simplified version - in practice, we'd need to use
-        // the proper authority store methods for object insertion
-        // which may require constructing appropriate store wrappers
-        
         debug!("Storing object {} version {}", obj_entry.object_id, obj_entry.version);
         
-        // For now, we acknowledge that direct object storage would require
-        // deeper integration with mgo-core's internal APIs
-        // This is a placeholder that demonstrates the structure
+        // TODO: Object to StoreObject conversion requires more complex logic
+        // For now, just log and continue
+        debug!("Object conversion not yet implemented: {} version {}", obj_entry.object_id, obj_entry.version);
         
+        // Store the object using perpetual tables
+        let _object_key = mgo_types::storage::ObjectKey(obj_entry.object_id, obj_entry.version);
+        
+        // TODO: Direct object storage not available through public API
+        // This would require deeper integration with AuthorityState
+        warn!("Object storage not yet implemented due to API limitations");
+        if !options.force_restore {
+            return Err(SnapshotError::StateApplication {
+                component: "objects".to_string(),
+                details: "Object storage API not yet available".to_string(),
+            });
+        }
         Ok(())
     }
 
     /// Store a transaction entry
-    async fn store_transaction_entry(
+    pub async fn store_transaction_entry(
         &self,
         tx_entry: &TransactionEntry,
-        _options: &RestoreOptions,
+        options: &RestoreOptions,
     ) -> Result<(), SnapshotError> {
         let _transaction: Transaction = bcs::from_bytes(&tx_entry.transaction_data)
             .map_err(|e| SnapshotError::InvalidFormat {
@@ -422,15 +495,22 @@ impl EnhancedStateApplier {
 
         debug!("Storing transaction {:?}", tx_entry.digest);
         
-        // Placeholder for transaction storage
+        // TODO: Transaction storage not available through public API
+        warn!("Transaction storage not yet implemented due to API limitations");
+        if !options.force_restore {
+            return Err(SnapshotError::StateApplication {
+                component: "transactions".to_string(),
+                details: "Transaction storage API not yet available".to_string(),
+            });
+        }
         Ok(())
     }
 
     /// Store an effects entry
-    async fn store_effects_entry(
+    pub async fn store_effects_entry(
         &self,
         effects_entry: &EffectsEntry,
-        _options: &RestoreOptions,
+        options: &RestoreOptions,
     ) -> Result<(), SnapshotError> {
         let _effects: TransactionEffects = bcs::from_bytes(&effects_entry.effects_data)
             .map_err(|e| SnapshotError::InvalidFormat {
@@ -439,15 +519,22 @@ impl EnhancedStateApplier {
 
         debug!("Storing effects {:?}", effects_entry.digest);
         
-        // Placeholder for effects storage
+        // TODO: Effects storage not available through public API
+        warn!("Effects storage not yet implemented due to API limitations");
+        if !options.force_restore {
+            return Err(SnapshotError::StateApplication {
+                component: "effects".to_string(),
+                details: "Effects storage API not yet available".to_string(),
+            });
+        }
         Ok(())
     }
 
     /// Store an events entry
-    async fn store_events_entry(
+    pub async fn store_events_entry(
         &self,
         events_entry: &EventsEntry,
-        _options: &RestoreOptions,
+        options: &RestoreOptions,
     ) -> Result<(), SnapshotError> {
         let events: Vec<Event> = bcs::from_bytes(&events_entry.events_data)
             .map_err(|e| SnapshotError::InvalidFormat {
@@ -456,26 +543,45 @@ impl EnhancedStateApplier {
 
         debug!("Storing {} events for {:?}", events.len(), events_entry.digest);
         
-        // Placeholder for events storage
+        // TODO: Events storage not available through public API
+        warn!("Events storage not yet implemented due to API limitations");
+        if !options.force_restore {
+            return Err(SnapshotError::StateApplication {
+                component: "events".to_string(),
+                details: "Events storage API not yet available".to_string(),
+            });
+        }
         Ok(())
     }
 
     /// Store a checkpoint
-    async fn store_checkpoint(&self, checkpoint: &VerifiedCheckpoint) -> Result<(), SnapshotError> {
+    pub async fn store_checkpoint(&self, checkpoint: &VerifiedCheckpoint) -> Result<(), SnapshotError> {
         debug!("Storing checkpoint {}", checkpoint.sequence_number());
         
-        // Use checkpoint store's public API if available
-        // This would require coordination with checkpoint store's internal methods
-        
-        Ok(())
+        // Store checkpoint using checkpoint store
+        match self.checkpoint_store.insert_verified_checkpoint(checkpoint) {
+            Ok(_) => {
+                debug!("Successfully stored checkpoint {}", checkpoint.sequence_number());
+                Ok(())
+            }
+            Err(e) => {
+                Err(SnapshotError::StateApplication {
+                    component: "checkpoints".to_string(),
+                    details: format!("Failed to store checkpoint {}: {}", checkpoint.sequence_number(), e),
+                })
+            }
+        }
     }
 
     /// Store committee for an epoch
     async fn store_committee(&self, epoch: EpochId, _committee: &Committee) -> Result<(), SnapshotError> {
         debug!("Storing committee for epoch {}", epoch);
         
-        // Committee storage would need checkpoint store coordination
-        
-        Ok(())
+        // TODO: get_epoch_store method not available in current AuthorityState
+        warn!("Committee storage not yet implemented due to API limitations");
+        Err(SnapshotError::StateApplication {
+            component: "committee".to_string(),
+            details: "Committee storage API not yet available".to_string(),
+        })
     }
 }

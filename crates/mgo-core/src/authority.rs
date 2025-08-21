@@ -133,6 +133,7 @@ use crate::authority::authority_store::{ExecutionLockReadGuard, ObjectLockStatus
 use crate::authority::authority_store_pruner::AuthorityStorePruner;
 use crate::authority::epoch_start_configuration::EpochStartConfigTrait;
 use crate::authority::epoch_start_configuration::EpochStartConfiguration;
+use crate::authority::authority_store_tables::AuthorityPerpetualTables;
 use crate::checkpoints::checkpoint_executor::CheckpointExecutor;
 use crate::checkpoints::CheckpointStore;
 use crate::consensus_adapter::ConsensusAdapter;
@@ -4906,6 +4907,118 @@ pub mod framework_injection {
             })
             .collect()
     }
+
+    // ==============================
+    // Snapshot-related APIs
+    // ==============================
+    
+    /// Get transactions within a checkpoint range for snapshot purposes
+    pub async fn get_transactions_in_checkpoint_range(
+        &self,
+        start_checkpoint: CheckpointSequenceNumber,
+        end_checkpoint: CheckpointSequenceNumber,
+        include_effects: bool,
+    ) -> MgoResult<Vec<TransactionWithEffects>> {
+        let mut transactions = Vec::new();
+        
+        for seq in start_checkpoint..=end_checkpoint {
+            if let Some(checkpoint) = self.checkpoint_store.get_checkpoint_by_sequence_number(seq)? {
+                let checkpoint_contents = self.checkpoint_store
+                    .get_checkpoint_contents(&checkpoint.content_digest)?
+                    .ok_or_else(|| MgoError::UserInputError { 
+                        error: mgo_types::error::UserInputError::VerifiedCheckpointNotFound(seq)
+                    })?;
+                
+                for execution_digest in checkpoint_contents.iter() {
+                    let transaction = self.database.perpetual_tables
+                        .transactions
+                        .get(&execution_digest.transaction)?
+                        .ok_or_else(|| MgoError::TransactionNotFound { 
+                            digest: execution_digest.transaction 
+                        })?;
+                    
+                    let effects = if include_effects {
+                        Some(self.database.perpetual_tables
+                            .effects
+                            .get(&execution_digest.effects)?
+                            .ok_or_else(|| MgoError::TransactionEventsNotFound { 
+                                digest: execution_digest.effects 
+                            })?)
+                    } else {
+                        None
+                    };
+                    
+                    transactions.push(TransactionWithEffects {
+                        transaction,
+                        effects,
+                        checkpoint_seq: seq,
+                    });
+                }
+            }
+        }
+        
+        Ok(transactions)
+    }
+    
+    /// Iterator for transactions in checkpoint range (memory efficient)
+    pub fn iter_transactions_in_checkpoint_range(
+        &self,
+        start_checkpoint: CheckpointSequenceNumber,
+        end_checkpoint: CheckpointSequenceNumber,
+    ) -> CheckpointTransactionIterator {
+        CheckpointTransactionIterator::new(
+            &self.checkpoint_store,
+            &self.database.perpetual_tables,
+            start_checkpoint,
+            end_checkpoint,
+        )
+    }
+    
+    /// Get all transactions and effects for a specific checkpoint
+    pub async fn get_checkpoint_transactions_with_effects(
+        &self,
+        checkpoint_seq: CheckpointSequenceNumber,
+    ) -> MgoResult<Vec<TransactionWithEffects>> {
+        let checkpoint = self.checkpoint_store
+            .get_checkpoint_by_sequence_number(checkpoint_seq)?
+            .ok_or_else(|| MgoError::UserInputError { 
+                error: mgo_types::error::UserInputError::VerifiedCheckpointNotFound(checkpoint_seq)
+            })?;
+        
+        let checkpoint_contents = self.checkpoint_store
+            .get_checkpoint_contents(&checkpoint.content_digest)?
+            .ok_or_else(|| MgoError::UserInputError { 
+                error: mgo_types::error::UserInputError::VerifiedCheckpointDigestNotFound(
+                    Base58::encode(checkpoint.content_digest)
+                )
+            })?;
+        
+        let mut transactions = Vec::new();
+        
+        for execution_digest in checkpoint_contents.iter() {
+            let transaction = self.database.perpetual_tables
+                .transactions
+                .get(&execution_digest.transaction)?
+                .ok_or_else(|| MgoError::TransactionNotFound { 
+                    digest: execution_digest.transaction 
+                })?;
+            
+            let effects = self.database.perpetual_tables
+                .effects
+                .get(&execution_digest.effects)?
+                .ok_or_else(|| MgoError::TransactionEventsNotFound { 
+                    digest: execution_digest.effects 
+                })?;
+            
+            transactions.push(TransactionWithEffects {
+                transaction,
+                effects: Some(effects),
+                checkpoint_seq,
+            });
+        }
+        
+        Ok(transactions)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -5043,5 +5156,92 @@ impl NodeStateDump {
     pub fn read_from_file(path: &PathBuf) -> Result<Self, anyhow::Error> {
         let file = File::open(path)?;
         serde_json::from_reader(file).map_err(|e| anyhow::anyhow!(e))
+    }
+}
+
+// ==============================
+// Snapshot-related types and iterators
+// ==============================
+
+/// Helper struct for transaction with effects
+#[derive(Debug, Clone)]
+pub struct TransactionWithEffects {
+    pub transaction: TrustedTransaction,
+    pub effects: Option<TransactionEffects>,
+    pub checkpoint_seq: CheckpointSequenceNumber,
+}
+
+/// Iterator for checkpoint transactions
+pub struct CheckpointTransactionIterator<'a> {
+    checkpoint_store: &'a CheckpointStore,
+    perpetual_tables: &'a AuthorityPerpetualTables,
+    current_checkpoint: CheckpointSequenceNumber,
+    end_checkpoint: CheckpointSequenceNumber,
+    current_transactions: std::vec::IntoIter<ExecutionDigests>,
+}
+
+impl<'a> CheckpointTransactionIterator<'a> {
+    pub fn new(
+        checkpoint_store: &'a CheckpointStore,
+        perpetual_tables: &'a AuthorityPerpetualTables,
+        start_checkpoint: CheckpointSequenceNumber,
+        end_checkpoint: CheckpointSequenceNumber,
+    ) -> Self {
+        Self {
+            checkpoint_store,
+            perpetual_tables,
+            current_checkpoint: start_checkpoint,
+            end_checkpoint,
+            current_transactions: Vec::new().into_iter(),
+        }
+    }
+}
+
+impl<'a> Iterator for CheckpointTransactionIterator<'a> {
+    type Item = MgoResult<(TransactionDigest, TrustedTransaction)>;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(execution_digest) = self.current_transactions.next() {
+                match self.perpetual_tables.transactions.get(&execution_digest.transaction) {
+                    Ok(Some(transaction)) => {
+                        return Some(Ok((execution_digest.transaction, transaction)));
+                    }
+                    Ok(None) => {
+                        return Some(Err(MgoError::TransactionNotFound { 
+                            digest: execution_digest.transaction 
+                        }));
+                    }
+                    Err(e) => return Some(Err(e.into())),
+                }
+            }
+            
+            if self.current_checkpoint > self.end_checkpoint {
+                return None;
+            }
+            
+            match self.checkpoint_store.get_checkpoint_by_sequence_number(self.current_checkpoint) {
+                Ok(Some(checkpoint)) => {
+                    match self.checkpoint_store.get_checkpoint_contents(&checkpoint.content_digest) {
+                        Ok(Some(contents)) => {
+                            self.current_transactions = contents.into_inner().into_iter();
+                            self.current_checkpoint += 1;
+                        }
+                        Ok(None) => {
+                            return Some(Err(MgoError::UserInputError { 
+                                error: mgo_types::error::UserInputError::VerifiedCheckpointDigestNotFound(
+                                    Base58::encode(checkpoint.content_digest)
+                                )
+                            }));
+                        }
+                        Err(e) => return Some(Err(e.into())),
+                    }
+                }
+                Ok(None) => {
+                    self.current_checkpoint += 1;
+                }
+                Err(e) => return Some(Err(e.into())),
+            }
+        }
     }
 }

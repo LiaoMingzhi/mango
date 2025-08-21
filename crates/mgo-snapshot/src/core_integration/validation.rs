@@ -557,7 +557,7 @@ impl EnhancedStateValidator {
         }
 
         // Check epoch-checkpoint consistency
-        let current_committee = self.db_accessor.get_current_committee()?;
+        let current_committee = self.db_accessor.get_current_committee().await?;
         let committee_size = current_committee
             .as_ref()
             .map(|c| c.num_members())

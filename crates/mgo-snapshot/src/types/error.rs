@@ -100,6 +100,31 @@ pub enum SnapshotError {
     #[error("Permission denied: {operation}")]
     PermissionDenied { operation: String },
 
+    /// State application errors
+    #[error("State application failed for component {component}: {details}")]
+    StateApplication { component: String, details: String },
+
+    /// State validation errors
+    #[error("State validation failed for component {component}: {details}")]
+    StateValidation { component: String, details: String },
+
+    /// Invalid operation errors
+    #[error("Invalid operation {operation}: {reason}")]
+    InvalidOperation { operation: String, reason: String },
+
+    /// Data access errors
+    #[error("Data access failed for operation {operation}: {details}")]
+    DataAccess { operation: String, details: String },
+
+    /// Restoration failed with rollback information
+    #[error("Restoration failed: {original_error}. Rollback performed: {rollback_performed}")]
+    RestorationFailed {
+        #[source]
+        original_error: Box<SnapshotError>,
+        rollback_performed: bool,
+        backup_snapshot_id: Option<crate::types::SnapshotId>,
+    },
+
     /// Generic error with context
     #[error("Snapshot operation failed: {context}")]
     Generic { context: String },

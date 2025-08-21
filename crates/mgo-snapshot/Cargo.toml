@@ -56,6 +56,12 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 # Byte utilities
 bytes = "1.5"
 
+# Performance optimization dependencies
+tokio-util = { version = "0.7", features = ["codec"] }
+crc32fast = "1.3"
+lz4 = { version = "1.24", optional = true }
+num_cpus = "1.16"
+
 # HTTP and API
 axum = { version = "0.6", features = ["json", "tokio"] }
 tower = "0.4"
@@ -90,7 +96,7 @@ pretty_assertions = "1.4"
 
 [features]
 default = ["compression", "encryption", "api", "metrics"]
-compression = ["dep:zstd", "dep:lz4_flex", "dep:flate2"]
+compression = ["dep:zstd", "dep:lz4_flex", "dep:flate2", "dep:lz4"]
 encryption = ["dep:shared-crypto"]
 distributed = []
 api = []

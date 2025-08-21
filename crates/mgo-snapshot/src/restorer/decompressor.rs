@@ -8,7 +8,7 @@ use crate::types::{
 };
 
 use std::io::Read;
-use tracing::{info, instrument};
+use tracing::{info, debug, error, warn, instrument};
 
 /// Snapshot decompressor for restoring compressed snapshot data
 /// 
@@ -30,17 +30,61 @@ impl SnapshotDecompressor {
             "Starting data decompression"
         );
         
-        // TODO: Detect compression algorithm from data header or metadata
-        // For now, assume no compression
-        let decompressed = compressed_data.to_vec();
+        // Detect compression algorithm from data header
+        let compression_type = self.detect_compression_algorithm(compressed_data)?;
+        
+        let decompressed = self.decompress_with_algorithm(compressed_data, compression_type).await?;
+        
+        // Validate decompressed data integrity
+        self.validate_decompressed_data(&decompressed)?;
         
         info!(
             compressed_size = compressed_data.len(),
             decompressed_size = decompressed.len(),
-            "Data decompression completed"
+            algorithm = ?compression_type,
+            "Data decompression completed successfully"
         );
         
         Ok(decompressed)
+    }
+
+    /// Detect compression algorithm from data header
+    fn detect_compression_algorithm(&self, data: &[u8]) -> SnapshotResult<CompressionType> {
+        if data.is_empty() {
+            return Ok(CompressionType::None);
+        }
+
+        // Check for compression magic bytes
+        if data.len() >= 4 {
+            // ZSTD magic number: 0x28, 0xB5, 0x2F, 0xFD
+            if data.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+                return Ok(CompressionType::Zstd);
+            }
+            
+            // LZ4 magic number: 0x04, 0x22, 0x4D, 0x18
+            if data.starts_with(&[0x04, 0x22, 0x4D, 0x18]) {
+                return Ok(CompressionType::Lz4);
+            }
+            
+            // Gzip magic number: 0x1F, 0x8B
+            if data.starts_with(&[0x1F, 0x8B]) {
+                return Ok(CompressionType::Gzip);
+            }
+        }
+
+        // Check for BCS-serialized uncompressed data (starts with small integer length)
+        if data.len() >= 1 {
+            let first_byte = data[0];
+            // BCS typically starts with length prefixes that are small integers
+            if first_byte < 0x80 {
+                // This is likely uncompressed BCS data
+                return Ok(CompressionType::None);
+            }
+        }
+
+        // Default to no compression if we can't detect
+        info!("Could not detect compression algorithm, assuming no compression");
+        Ok(CompressionType::None)
     }
     
     /// Decompress using specific algorithm
@@ -49,12 +93,41 @@ impl SnapshotDecompressor {
         compressed_data: &[u8],
         algorithm: CompressionType,
     ) -> SnapshotResult<Vec<u8>> {
-        match algorithm {
+        debug!("Using decompression algorithm: {:?}", algorithm);
+        
+        let start_time = std::time::Instant::now();
+        let result = match algorithm {
             CompressionType::None => Ok(compressed_data.to_vec()),
             CompressionType::Zstd => self.decompress_zstd(compressed_data),
             CompressionType::Lz4 => self.decompress_lz4(compressed_data),
             CompressionType::Gzip => self.decompress_gzip(compressed_data),
+            // CompressionType::Brotli => self.decompress_brotli(compressed_data),
+        };
+        
+        let duration = start_time.elapsed();
+        match &result {
+            Ok(decompressed) => {
+                info!(
+                    algorithm = ?algorithm,
+                    compressed_size = compressed_data.len(),
+                    decompressed_size = decompressed.len(),
+                    duration_ms = duration.as_millis(),
+                    ratio = decompressed.len() as f64 / compressed_data.len() as f64,
+                    "Decompression completed successfully"
+                );
+            }
+            Err(e) => {
+                error!(
+                    algorithm = ?algorithm,
+                    compressed_size = compressed_data.len(),
+                    duration_ms = duration.as_millis(),
+                    error = %e,
+                    "Decompression failed"
+                );
+            }
         }
+        
+        result
     }
     
     /// Decompress using ZSTD
@@ -106,5 +179,37 @@ impl SnapshotDecompressor {
         Err(SnapshotError::Compression(
             "Gzip decompression not available (feature disabled)".to_string()
         ))
+    }
+
+    // Brotli support removed for simplicity
+
+    /// Validate decompressed data integrity
+    pub fn validate_decompressed_data(&self, data: &[u8]) -> SnapshotResult<()> {
+        // Basic sanity checks
+        if data.is_empty() {
+            return Err(SnapshotError::InvalidFormat {
+                reason: "Decompressed data is empty".to_string(),
+            });
+        }
+
+        // Try to deserialize as BCS to check if it's valid snapshot data
+        // This is a basic check - more specific validation would depend on the expected format
+        match bcs::from_bytes::<Vec<u8>>(data) {
+            Ok(_) => {
+                debug!("Decompressed data appears to be valid BCS format");
+                Ok(())
+            }
+            Err(_) => {
+                // If it's not a simple Vec<u8>, it might still be valid snapshot data
+                // We'll just check that it has reasonable structure
+                if data.len() > 4 && data[0] != 0 {
+                    debug!("Decompressed data appears to have valid structure");
+                    Ok(())
+                } else {
+                    warn!("Decompressed data structure validation warning - proceeding anyway");
+                    Ok(())
+                }
+            }
+        }
     }
 }

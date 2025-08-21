@@ -385,6 +385,7 @@ pub struct TransactionEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectsEntry {
     pub digest: TransactionEffectsDigest,
+    pub transaction_digest: TransactionDigest,  // Link to the transaction
     pub effects_data: Vec<u8>, // Serialized effects
 }
 

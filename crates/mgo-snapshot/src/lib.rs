@@ -15,6 +15,7 @@ pub mod restorer;
 pub mod core_integration;
 pub mod incremental;
 pub mod strategy;
+pub mod performance;
 
 // API and monitoring modules
 #[cfg(feature = "api")]

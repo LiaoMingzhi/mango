@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use mgo_types::accumulator::Accumulator;
 use mgo_types::base_types::SequenceNumber;
-use mgo_types::digests::TransactionEventsDigest;
+use mgo_types::digests::{TransactionEventsDigest, TransactionDigest, TransactionEffectsDigest};
+use mgo_types::transaction::TrustedTransaction;
+use mgo_types::error::MgoError;
+use mgo_types::storage::ObjectKey;
 use mgo_types::effects::TransactionEffects;
 use mgo_types::storage::MarkerValue;
 use typed_store::metrics::SamplingInterval;
@@ -499,6 +502,87 @@ impl AuthorityPerpetualTables {
         wb.write()?;
         Ok(())
     }
+
+    // ==============================
+    // Snapshot restore APIs
+    // ==============================
+    
+    /// Batch write objects during snapshot restoration
+    pub fn batch_write_objects_for_snapshot(
+        &self,
+        objects: Vec<(ObjectKey, StoreObjectWrapper)>,
+        write_batch: &mut typed_store::rocks::DBBatch,
+    ) -> Result<(), typed_store::TypedStoreError> {
+        for (key, value) in objects {
+            write_batch.insert_batch(&self.objects, std::iter::once((key, value)))?;
+        }
+        Ok(())
+    }
+    
+    /// Batch write transactions during snapshot restoration
+    pub fn batch_write_transactions_for_snapshot(
+        &self,
+        transactions: Vec<(TransactionDigest, TrustedTransaction)>,
+        write_batch: &mut typed_store::rocks::DBBatch,
+    ) -> Result<(), typed_store::TypedStoreError> {
+        for (digest, transaction) in transactions {
+            write_batch.insert_batch(&self.transactions, std::iter::once((digest, transaction)))?;
+        }
+        Ok(())
+    }
+    
+    /// Batch write effects during snapshot restoration
+    pub fn batch_write_effects_for_snapshot(
+        &self,
+        effects: Vec<(TransactionEffectsDigest, TransactionEffects)>,
+        write_batch: &mut typed_store::rocks::DBBatch,
+    ) -> Result<(), typed_store::TypedStoreError> {
+        for (digest, effect) in effects {
+            write_batch.insert_batch(&self.effects, std::iter::once((digest, effect)))?;
+        }
+        Ok(())
+    }
+    
+    /// Batch write executed effects during snapshot restoration
+    pub fn batch_write_executed_effects_for_snapshot(
+        &self,
+        executed_effects: Vec<(TransactionDigest, TransactionEffectsDigest)>,
+        write_batch: &mut typed_store::rocks::DBBatch,
+    ) -> Result<(), typed_store::TypedStoreError> {
+        for (tx_digest, effects_digest) in executed_effects {
+            write_batch.insert_batch(&self.executed_effects, std::iter::once((tx_digest, effects_digest)))?;
+        }
+        Ok(())
+    }
+    
+    /// Create a new write batch for atomic operations
+    pub fn create_snapshot_write_batch(&self) -> typed_store::rocks::DBBatch {
+        self.objects.batch()
+    }
+    
+    /// Commit a write batch atomically
+    pub fn commit_snapshot_batch(&self, batch: typed_store::rocks::DBBatch) -> Result<(), typed_store::TypedStoreError> {
+        batch.write()
+    }
+    
+    /// Get read-only access to tables for snapshot creation
+    pub fn get_objects_table_for_snapshot(&self) -> &DBMap<ObjectKey, StoreObjectWrapper> {
+        &self.objects
+    }
+    
+    pub fn get_transactions_table_for_snapshot(&self) -> &DBMap<TransactionDigest, TrustedTransaction> {
+        &self.transactions
+    }
+    
+    pub fn get_effects_table_for_snapshot(&self) -> &DBMap<TransactionEffectsDigest, TransactionEffects> {
+        &self.effects
+    }
+    
+    pub fn get_executed_effects_table_for_snapshot(&self) -> &DBMap<TransactionDigest, TransactionEffectsDigest> {
+        &self.executed_effects
+    }
+
+
 }
 
 impl ObjectStore for AuthorityPerpetualTables {

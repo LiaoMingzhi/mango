@@ -125,28 +125,49 @@ impl DeltaApplier {
     async fn apply_transaction_delta(
         &self,
         transaction_delta: &TransactionDelta,
-        _options: &RestoreOptions,
+        options: &RestoreOptions,
     ) -> Result<u64, SnapshotError> {
         debug!("Applying transaction delta");
 
         let mut applied_count = 0u64;
 
         // Apply new transactions
-        for _tx_entry in &transaction_delta.new_transactions {
-            // Placeholder: would use proper transaction insertion
-            applied_count += 1;
+        for tx_entry in &transaction_delta.new_transactions {
+            if let Err(e) = self.apply_new_transaction(tx_entry).await {
+                if options.force_restore {
+                    warn!("Failed to apply transaction {:?}: {}, continuing", tx_entry.digest, e);
+                } else {
+                    return Err(e);
+                }
+            } else {
+                applied_count += 1;
+            }
         }
 
         // Apply new effects
-        for _effects_entry in &transaction_delta.new_effects {
-            // Placeholder: would use proper effects insertion
-            applied_count += 1;
+        for effects_entry in &transaction_delta.new_effects {
+            if let Err(e) = self.apply_new_effects(effects_entry).await {
+                if options.force_restore {
+                    warn!("Failed to apply effects {:?}: {}, continuing", effects_entry.digest, e);
+                } else {
+                    return Err(e);
+                }
+            } else {
+                applied_count += 1;
+            }
         }
 
         // Apply new events
-        for _events_entry in &transaction_delta.new_events {
-            // Placeholder: would use proper events insertion
-            applied_count += 1;
+        for events_entry in &transaction_delta.new_events {
+            if let Err(e) = self.apply_new_events(events_entry).await {
+                if options.force_restore {
+                    warn!("Failed to apply events {:?}: {}, continuing", events_entry.digest, e);
+                } else {
+                    return Err(e);
+                }
+            } else {
+                applied_count += 1;
+            }
         }
 
         info!("Applied {} transaction changes", applied_count);
@@ -157,7 +178,7 @@ impl DeltaApplier {
     async fn apply_checkpoint_delta(
         &self,
         checkpoint_delta: &CheckpointDelta,
-        _options: &RestoreOptions,
+        options: &RestoreOptions,
     ) -> Result<u64, SnapshotError> {
         debug!("Applying checkpoint delta");
 
@@ -165,9 +186,19 @@ impl DeltaApplier {
 
         // Apply new checkpoints in order
         for checkpoint_seq in &checkpoint_delta.new_checkpoint_seqs {
-            // TODO: Need to retrieve actual VerifiedCheckpoint from checkpoint sequence number
-            warn!("Skipping checkpoint {} application - need to implement checkpoint retrieval", checkpoint_seq);
-            applied_count += 1;
+            match self.apply_new_checkpoint(*checkpoint_seq).await {
+                Ok(_) => {
+                    applied_count += 1;
+                    debug!("Successfully applied checkpoint {}", checkpoint_seq);
+                }
+                Err(e) => {
+                    if options.force_restore {
+                        warn!("Failed to apply checkpoint {}: {}, continuing", checkpoint_seq, e);
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
 
         info!("Applied {} checkpoints", applied_count);
@@ -301,15 +332,61 @@ impl DeltaApplier {
         Ok(())
     }
 
-    /// Apply a new checkpoint
+    /// Apply a new checkpoint by sequence number
     async fn apply_new_checkpoint(
         &self,
-        checkpoint: &mgo_types::messages_checkpoint::VerifiedCheckpoint,
+        checkpoint_seq: mgo_types::messages_checkpoint::CheckpointSequenceNumber,
     ) -> Result<(), SnapshotError> {
-        debug!("Applying new checkpoint {}", checkpoint.sequence_number());
+        debug!("Applying new checkpoint {}", checkpoint_seq);
         
-        // Placeholder: would use proper checkpoint insertion APIs
-        Ok(())
+        // Retrieve the verified checkpoint from database accessor
+        match self.db_accessor.get_checkpoint(checkpoint_seq)? {
+            Some(verified_checkpoint) => {
+                // Use the state applier to store the checkpoint
+                self.state_applier.store_checkpoint(&verified_checkpoint).await?;
+                debug!("Successfully applied checkpoint {}", checkpoint_seq);
+                Ok(())
+            }
+            None => {
+                Err(SnapshotError::StateCollection {
+                    component: "checkpoints".to_string(),
+                    details: format!("Checkpoint {} not found", checkpoint_seq),
+                })
+            }
+        }
+    }
+
+    /// Apply a new transaction
+    async fn apply_new_transaction(
+        &self,
+        tx_entry: &crate::core_integration::TransactionEntry,
+    ) -> Result<(), SnapshotError> {
+        debug!("Applying new transaction {:?}", tx_entry.digest);
+        
+        // Use the state applier to store the transaction
+        self.state_applier.store_transaction_entry(tx_entry, &crate::types::restore::RestoreOptions::default()).await
+    }
+
+    /// Apply new effects
+    async fn apply_new_effects(
+        &self,
+        effects_entry: &crate::core_integration::EffectsEntry,
+    ) -> Result<(), SnapshotError> {
+        debug!("Applying new effects {:?}", effects_entry.digest);
+        
+        // Use the state applier to store the effects
+        self.state_applier.store_effects_entry(effects_entry, &crate::types::restore::RestoreOptions::default()).await
+    }
+
+    /// Apply new events
+    async fn apply_new_events(
+        &self,
+        events_entry: &crate::core_integration::EventsEntry,
+    ) -> Result<(), SnapshotError> {
+        debug!("Applying new events {:?}", events_entry.digest);
+        
+        // Use the state applier to store the events
+        self.state_applier.store_events_entry(events_entry, &crate::types::restore::RestoreOptions::default()).await
     }
 
     /// Apply a new committee

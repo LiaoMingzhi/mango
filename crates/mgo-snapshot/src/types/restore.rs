@@ -26,6 +26,12 @@ pub struct RestoreOptions {
     
     /// Timeout for restoration operations (in seconds)
     pub timeout_seconds: u64,
+    
+    /// Whether to create a backup before restoration (alias for backup_current)
+    pub create_backup: bool,
+    
+    /// Batch size for bulk operations
+    pub batch_size: Option<usize>,
 }
 
 impl Default for RestoreOptions {
@@ -37,6 +43,8 @@ impl Default for RestoreOptions {
             parallel_restore: true,
             max_retries: 3,
             timeout_seconds: 300, // 5 minutes
+            create_backup: true,
+            batch_size: Some(1000),
         }
     }
 }

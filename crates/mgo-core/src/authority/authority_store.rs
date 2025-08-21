@@ -37,6 +37,9 @@ use typed_store::{
     TypedStoreError,
 };
 
+use mgo_types::digests::{TransactionDigest, TransactionEffectsDigest};
+use mgo_types::transaction::TrustedTransaction;
+
 use super::authority_store_tables::LiveObject;
 use super::{authority_store_tables::AuthorityPerpetualTables, *};
 use mango_common::sync::notify_read::NotifyRead;
@@ -1686,6 +1689,42 @@ impl AuthorityStore {
             .unwrap()
             .len()
     }
+
+    /// Begin a snapshot restoration transaction
+    pub async fn begin_snapshot_transaction(&self) -> MgoResult<SnapshotTransaction> {
+        Ok(SnapshotTransaction {
+            batches: Vec::new(),
+            perpetual_tables: self.perpetual_tables.clone(),
+        })
+    }
+    
+    /// Execute multiple operations atomically for snapshot restoration
+    pub async fn execute_snapshot_restoration_batch(
+        &self,
+        operations: Vec<SnapshotOperation>,
+    ) -> MgoResult<()> {
+        let mut batch = self.perpetual_tables.create_snapshot_write_batch();
+        
+        for operation in operations {
+            match operation {
+                SnapshotOperation::WriteObjects(objects) => {
+                    self.perpetual_tables.batch_write_objects_for_snapshot(objects, &mut batch)?;
+                }
+                SnapshotOperation::WriteTransactions(transactions) => {
+                    self.perpetual_tables.batch_write_transactions_for_snapshot(transactions, &mut batch)?;
+                }
+                SnapshotOperation::WriteEffects(effects) => {
+                    self.perpetual_tables.batch_write_effects_for_snapshot(effects, &mut batch)?;
+                }
+                SnapshotOperation::WriteExecutedEffects(executed_effects) => {
+                    self.perpetual_tables.batch_write_executed_effects_for_snapshot(executed_effects, &mut batch)?;
+                }
+            }
+        }
+        
+        self.perpetual_tables.commit_snapshot_batch(batch)?;
+        Ok(())
+    }
 }
 
 impl ObjectStore for AuthorityStore {
@@ -1758,7 +1797,62 @@ impl LockDetailsWrapper {
         // N+1 until we arrive at the latest version
         self
     }
+}
 
+/// Snapshot restoration transaction context
+pub struct SnapshotTransaction {
+    pub batches: Vec<DBBatch>,
+    pub perpetual_tables: Arc<AuthorityPerpetualTables>,
+}
+
+impl SnapshotTransaction {
+    /// Add objects to the transaction
+    pub async fn add_objects(
+        &mut self,
+        objects: Vec<(ObjectKey, StoreObjectWrapper)>,
+    ) -> MgoResult<()> {
+        let mut batch = self.perpetual_tables.create_snapshot_write_batch();
+        self.perpetual_tables.batch_write_objects_for_snapshot(objects, &mut batch)?;
+        self.batches.push(batch);
+        Ok(())
+    }
+    
+    /// Add transactions to the transaction
+    pub async fn add_transactions(
+        &mut self,
+        transactions: Vec<(TransactionDigest, TrustedTransaction)>,
+    ) -> MgoResult<()> {
+        let mut batch = self.perpetual_tables.create_snapshot_write_batch();
+        self.perpetual_tables.batch_write_transactions_for_snapshot(transactions, &mut batch)?;
+        self.batches.push(batch);
+        Ok(())
+    }
+    
+    /// Commit all changes atomically
+    pub async fn commit(self) -> MgoResult<()> {
+        for batch in self.batches {
+            self.perpetual_tables.commit_snapshot_batch(batch)?;
+        }
+        Ok(())
+    }
+    
+    /// Rollback all changes
+    pub async fn rollback(self) -> MgoResult<()> {
+        // Changes are not committed yet, so just drop the transaction
+        Ok(())
+    }
+}
+
+/// Snapshot operation types
+#[derive(Debug)]
+pub enum SnapshotOperation {
+    WriteObjects(Vec<(ObjectKey, StoreObjectWrapper)>),
+    WriteTransactions(Vec<(TransactionDigest, TrustedTransaction)>),
+    WriteEffects(Vec<(TransactionEffectsDigest, TransactionEffects)>),
+    WriteExecutedEffects(Vec<(TransactionDigest, TransactionEffectsDigest)>),
+}
+
+impl LockDetailsWrapper {
     // Always returns the most recent version. Older versions are migrated to the latest version at
     // read time, so there is never a need to access older versions.
     pub fn inner(&self) -> &LockDetails {

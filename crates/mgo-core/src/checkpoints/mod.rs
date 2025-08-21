@@ -7,6 +7,8 @@ mod checkpoint_output;
 mod metrics;
 
 use crate::authority::{AuthorityState, EffectsNotifyRead};
+use fastcrypto::encoding::Encoding;
+use mgo_types::error::MgoError;
 use crate::authority_client::{make_network_authority_clients_with_network_config, AuthorityAPI};
 use crate::checkpoints::causal_order::CausalOrder;
 use crate::checkpoints::checkpoint_output::{CertifiedCheckpointOutput, CheckpointOutput};
@@ -670,6 +672,81 @@ impl CheckpointStore {
         self.delete_highest_executed_checkpoint_test_only()?;
         self.watermarks.rocksdb.flush()?;
         Ok(())
+    }
+
+    /// Batch write checkpoint-related data during snapshot restoration
+    pub async fn write_checkpoint_for_snapshot(
+        &self,
+        checkpoint: VerifiedCheckpoint,
+        checkpoint_contents: CheckpointContents,
+    ) -> MgoResult<()> {
+        // Insert checkpoint contents first
+        self.insert_checkpoint_contents(checkpoint_contents)?;
+        
+        // Then insert the verified checkpoint
+        self.insert_verified_checkpoint(&checkpoint)?;
+        
+        // Update the highest synced checkpoint if this is higher
+        let seq = *checkpoint.sequence_number();
+        if let Ok(Some(current_highest)) = self.get_highest_synced_checkpoint() {
+            if seq > *current_highest.sequence_number() {
+                self.update_highest_synced_checkpoint(&checkpoint)?;
+            }
+        } else {
+            // No previous highest checkpoint, so this becomes the highest
+            self.update_highest_synced_checkpoint(&checkpoint)?;
+        }
+        
+        Ok(())
+    }
+
+    /// Get checkpoint contents with transactions for snapshot purposes
+    pub async fn get_checkpoint_with_full_transactions(
+        &self,
+        checkpoint_seq: CheckpointSequenceNumber,
+        perpetual_tables: &crate::authority::authority_store_tables::AuthorityPerpetualTables,
+    ) -> MgoResult<Option<CheckpointWithTransactions>> {
+        let checkpoint = self.get_checkpoint_by_sequence_number(checkpoint_seq)?;
+        if let Some(checkpoint) = checkpoint {
+            let contents = self.get_checkpoint_contents(&checkpoint.content_digest)?
+                                    .ok_or_else(|| MgoError::UserInputError { 
+                        error: mgo_types::error::UserInputError::VerifiedCheckpointDigestNotFound(
+                            fastcrypto::encoding::Base58::encode(&checkpoint.content_digest)
+                        )
+                    })?;
+            
+            let mut transactions = Vec::new();
+            for execution_digest in contents.iter() {
+                let transaction = perpetual_tables.transactions
+                    .get(&execution_digest.transaction)?
+                    .ok_or_else(|| MgoError::UserInputError { 
+                        error: mgo_types::error::UserInputError::VerifiedCheckpointDigestNotFound(
+                            execution_digest.transaction.to_string()
+                        )
+                    })?;
+                
+                let effects = perpetual_tables.effects
+                    .get(&execution_digest.effects)?
+                    .ok_or_else(|| MgoError::UserInputError { 
+                        error: mgo_types::error::UserInputError::VerifiedCheckpointDigestNotFound(
+                            execution_digest.effects.to_string()
+                        )
+                    })?;
+                
+                transactions.push(crate::authority::TransactionWithEffects {
+                    transaction,
+                    effects: Some(effects),
+                    checkpoint_seq,
+                });
+            }
+            
+            Ok(Some(CheckpointWithTransactions {
+                checkpoint,
+                transactions,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -2203,4 +2280,11 @@ mod tests {
             )
             .expect("Inserting cert fx and sigs should not fail");
     }
+}
+
+/// Checkpoint with full transaction data
+#[derive(Debug)]
+pub struct CheckpointWithTransactions {
+    pub checkpoint: VerifiedCheckpoint,
+    pub transactions: Vec<crate::authority::TransactionWithEffects>,
 }
