@@ -12,47 +12,91 @@ use tracing::{info, warn, error, debug};
 
 use crate::types::error::{SnapshotResult, SnapshotError};
 
-/// Memory pool for reusing large buffers during snapshot operations
+/// Enhanced memory pool for reusing large buffers during snapshot operations
 pub struct MemoryPool {
     /// Available buffers of different sizes
     small_buffers: Arc<Mutex<VecDeque<Vec<u8>>>>,    // ~64KB buffers
     medium_buffers: Arc<Mutex<VecDeque<Vec<u8>>>>,   // ~1MB buffers  
     large_buffers: Arc<Mutex<VecDeque<Vec<u8>>>>,    // ~16MB buffers
-    /// Statistics
+    xlarge_buffers: Arc<Mutex<VecDeque<Vec<u8>>>>,   // ~64MB buffers
+    /// Enhanced statistics
     total_allocated: AtomicUsize,
     total_reused: AtomicUsize,
     peak_memory: AtomicUsize,
-    /// Configuration
+    active_memory: AtomicUsize,
+    fragmentation_ratio: AtomicUsize, // in basis points (0-10000)
+    /// Enhanced configuration
     max_buffer_count: usize,
     small_buffer_size: usize,
     medium_buffer_size: usize,
     large_buffer_size: usize,
+    xlarge_buffer_size: usize,
+    memory_pressure_threshold: usize, // Memory pressure threshold in bytes
+    gc_interval_ms: u64, // Garbage collection interval
 }
 
 impl MemoryPool {
+    /// Create a new enhanced memory pool with optimized settings
     pub fn new() -> Self {
         Self {
             small_buffers: Arc::new(Mutex::new(VecDeque::new())),
             medium_buffers: Arc::new(Mutex::new(VecDeque::new())),
             large_buffers: Arc::new(Mutex::new(VecDeque::new())),
+            xlarge_buffers: Arc::new(Mutex::new(VecDeque::new())),
             total_allocated: AtomicUsize::new(0),
             total_reused: AtomicUsize::new(0),
             peak_memory: AtomicUsize::new(0),
-            max_buffer_count: 100,
-            small_buffer_size: 64 * 1024,      // 64KB
-            medium_buffer_size: 1024 * 1024,   // 1MB
+            active_memory: AtomicUsize::new(0),
+            fragmentation_ratio: AtomicUsize::new(0),
+            max_buffer_count: 150, // Increased for better performance
+            small_buffer_size: 64 * 1024,        // 64KB
+            medium_buffer_size: 1024 * 1024,     // 1MB
             large_buffer_size: 16 * 1024 * 1024, // 16MB
+            xlarge_buffer_size: 64 * 1024 * 1024, // 64MB
+            memory_pressure_threshold: 512 * 1024 * 1024, // 512MB
+            gc_interval_ms: 30000, // 30 seconds
         }
     }
 
-    /// Get a buffer suitable for the requested size
+    /// Create a memory pool with custom configuration for different workloads
+    pub fn new_with_config(
+        max_buffer_count: usize,
+        memory_pressure_threshold: usize,
+        gc_interval_ms: u64,
+    ) -> Self {
+        Self {
+            small_buffers: Arc::new(Mutex::new(VecDeque::new())),
+            medium_buffers: Arc::new(Mutex::new(VecDeque::new())),
+            large_buffers: Arc::new(Mutex::new(VecDeque::new())),
+            xlarge_buffers: Arc::new(Mutex::new(VecDeque::new())),
+            total_allocated: AtomicUsize::new(0),
+            total_reused: AtomicUsize::new(0),
+            peak_memory: AtomicUsize::new(0),
+            active_memory: AtomicUsize::new(0),
+            fragmentation_ratio: AtomicUsize::new(0),
+            max_buffer_count,
+            small_buffer_size: 64 * 1024,        // 64KB
+            medium_buffer_size: 1024 * 1024,     // 1MB
+            large_buffer_size: 16 * 1024 * 1024, // 16MB
+            xlarge_buffer_size: 64 * 1024 * 1024, // 64MB
+            memory_pressure_threshold,
+            gc_interval_ms,
+        }
+    }
+
+    /// Get a buffer suitable for the requested size with enhanced size selection
     pub async fn get_buffer(&self, min_size: usize) -> Vec<u8> {
         let (buffer_size, pool) = if min_size <= self.small_buffer_size {
             (self.small_buffer_size, &self.small_buffers)
         } else if min_size <= self.medium_buffer_size {
             (self.medium_buffer_size, &self.medium_buffers)
+        } else if min_size <= self.large_buffer_size {
+            (self.large_buffer_size, &self.large_buffers)
+        } else if min_size <= self.xlarge_buffer_size {
+            (self.xlarge_buffer_size, &self.xlarge_buffers)
         } else {
-            (self.large_buffer_size.max(min_size), &self.large_buffers)
+            // For extremely large requests, allocate exactly what's needed
+            (min_size, &self.xlarge_buffers)
         };
 
         // Try to reuse existing buffer
@@ -309,6 +353,193 @@ impl Drop for ManagedBuffer {
             tokio::spawn(async move {
                 pool.return_buffer(buffer).await;
             });
+        }
+    }
+}
+
+impl MemoryPool {
+    /// Enhanced memory pressure detection and optimization
+    pub async fn check_memory_pressure(&self) -> MemoryPressureLevel {
+        let active_memory = self.active_memory.load(Ordering::Relaxed);
+        let fragmentation = self.fragmentation_ratio.load(Ordering::Relaxed);
+        
+        if active_memory > self.memory_pressure_threshold && fragmentation > 2000 {
+            MemoryPressureLevel::Critical
+        } else if active_memory > self.memory_pressure_threshold * 3 / 4 {
+            MemoryPressureLevel::High
+        } else if active_memory > self.memory_pressure_threshold / 2 {
+            MemoryPressureLevel::Medium
+        } else {
+            MemoryPressureLevel::Low
+        }
+    }
+
+    /// Perform intelligent garbage collection based on memory pressure
+    pub async fn intelligent_gc(&self) -> SnapshotResult<GcStats> {
+        debug!("Starting intelligent garbage collection");
+        
+        let pressure_level = self.check_memory_pressure().await;
+        let mut stats = GcStats::default();
+        
+        match pressure_level {
+            MemoryPressureLevel::Critical => {
+                // Aggressive cleanup: remove 75% of buffers
+                stats += self.cleanup_buffers(&self.small_buffers, 75).await?;
+                stats += self.cleanup_buffers(&self.medium_buffers, 75).await?;
+                stats += self.cleanup_buffers(&self.large_buffers, 75).await?;
+                stats += self.cleanup_buffers(&self.xlarge_buffers, 90).await?;
+            }
+            MemoryPressureLevel::High => {
+                // Moderate cleanup: remove 50% of buffers
+                stats += self.cleanup_buffers(&self.small_buffers, 40).await?;
+                stats += self.cleanup_buffers(&self.medium_buffers, 50).await?;
+                stats += self.cleanup_buffers(&self.large_buffers, 60).await?;
+                stats += self.cleanup_buffers(&self.xlarge_buffers, 70).await?;
+            }
+            MemoryPressureLevel::Medium => {
+                // Light cleanup: remove older buffers
+                stats += self.cleanup_buffers(&self.xlarge_buffers, 50).await?;
+                stats += self.cleanup_buffers(&self.large_buffers, 30).await?;
+            }
+            MemoryPressureLevel::Low => {
+                // Minimal cleanup: just prevent buffer count overflow
+                if self.get_total_buffer_count().await > self.max_buffer_count {
+                    stats += self.cleanup_buffers(&self.xlarge_buffers, 25).await?;
+                }
+            }
+        }
+        
+        info!("GC completed: freed {} buffers, {} bytes", stats.buffers_freed, stats.memory_freed);
+        Ok(stats)
+    }
+
+    /// Cleanup buffers with specified percentage
+    async fn cleanup_buffers(
+        &self,
+        pool: &Arc<Mutex<VecDeque<Vec<u8>>>>,
+        cleanup_percentage: usize,
+    ) -> SnapshotResult<GcStats> {
+        let mut stats = GcStats::default();
+        let mut buffers = pool.lock().await;
+        
+        let target_removal = buffers.len() * cleanup_percentage / 100;
+        for _ in 0..target_removal {
+            if let Some(buffer) = buffers.pop_back() {
+                stats.memory_freed += buffer.capacity();
+                stats.buffers_freed += 1;
+                self.active_memory.fetch_sub(buffer.capacity(), Ordering::Relaxed);
+            }
+        }
+        
+        Ok(stats)
+    }
+
+    /// Get total number of cached buffers across all pools
+    async fn get_total_buffer_count(&self) -> usize {
+        let small_count = self.small_buffers.lock().await.len();
+        let medium_count = self.medium_buffers.lock().await.len();
+        let large_count = self.large_buffers.lock().await.len();
+        let xlarge_count = self.xlarge_buffers.lock().await.len();
+        
+        small_count + medium_count + large_count + xlarge_count
+    }
+
+    /// Get comprehensive memory statistics
+    pub async fn get_enhanced_stats(&self) -> MemoryStats {
+        let total_buffer_count = self.get_total_buffer_count().await;
+        
+        MemoryStats {
+            total_allocated: self.total_allocated.load(Ordering::Relaxed),
+            total_reused: self.total_reused.load(Ordering::Relaxed),
+            peak_memory: self.peak_memory.load(Ordering::Relaxed),
+            active_memory: self.active_memory.load(Ordering::Relaxed),
+            fragmentation_ratio: self.fragmentation_ratio.load(Ordering::Relaxed),
+            total_cached_buffers: total_buffer_count,
+            memory_pressure_level: self.check_memory_pressure().await,
+            reuse_efficiency: if self.total_allocated.load(Ordering::Relaxed) > 0 {
+                (self.total_reused.load(Ordering::Relaxed) * 100) / self.total_allocated.load(Ordering::Relaxed)
+            } else {
+                0
+            },
+        }
+    }
+
+    /// Start automatic memory management background task
+    pub fn start_auto_management(&self) -> tokio::task::JoinHandle<()> {
+        let pool = Arc::new(self.clone());
+        let gc_interval = std::time::Duration::from_millis(self.gc_interval_ms);
+        
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(gc_interval);
+            
+            loop {
+                interval.tick().await;
+                
+                if let Err(e) = pool.intelligent_gc().await {
+                    warn!("Auto GC failed: {}", e);
+                } else {
+                    debug!("Auto GC completed successfully");
+                }
+            }
+        })
+    }
+}
+
+/// Memory pressure levels for intelligent resource management
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MemoryPressureLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+/// Garbage collection statistics
+#[derive(Debug, Default, Clone)]
+pub struct GcStats {
+    pub buffers_freed: usize,
+    pub memory_freed: usize,
+}
+
+impl std::ops::AddAssign for GcStats {
+    fn add_assign(&mut self, other: GcStats) {
+        self.buffers_freed += other.buffers_freed;
+        self.memory_freed += other.memory_freed;
+    }
+}
+
+/// Enhanced memory statistics
+#[derive(Debug, Clone)]
+pub struct MemoryStats {
+    pub total_allocated: usize,
+    pub total_reused: usize,
+    pub peak_memory: usize,
+    pub active_memory: usize,
+    pub fragmentation_ratio: usize,
+    pub total_cached_buffers: usize,
+    pub memory_pressure_level: MemoryPressureLevel,
+    pub reuse_efficiency: usize, // Percentage
+}
+
+impl Clone for MemoryPool {
+    fn clone(&self) -> Self {
+        Self {
+            small_buffers: Arc::clone(&self.small_buffers),
+            medium_buffers: Arc::clone(&self.medium_buffers),
+            large_buffers: Arc::clone(&self.large_buffers),
+            xlarge_buffers: Arc::clone(&self.xlarge_buffers),
+            total_allocated: AtomicUsize::new(self.total_allocated.load(Ordering::Relaxed)),
+            total_reused: AtomicUsize::new(self.total_reused.load(Ordering::Relaxed)),
+            peak_memory: AtomicUsize::new(self.peak_memory.load(Ordering::Relaxed)),
+            active_memory: AtomicUsize::new(self.active_memory.load(Ordering::Relaxed)),
+            fragmentation_ratio: AtomicUsize::new(self.fragmentation_ratio.load(Ordering::Relaxed)),
+            max_buffer_count: self.max_buffer_count,
+            small_buffer_size: self.small_buffer_size,
+            medium_buffer_size: self.medium_buffer_size,
+            large_buffer_size: self.large_buffer_size,
+            xlarge_buffer_size: self.xlarge_buffer_size,
+            memory_pressure_threshold: self.memory_pressure_threshold,
+            gc_interval_ms: self.gc_interval_ms,
         }
     }
 }

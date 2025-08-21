@@ -450,7 +450,7 @@ impl EnhancedStateApplier {
     }
 
     /// Store a single object entry
-    async fn store_object_entry(
+    pub async fn store_object_entry(
         &self,
         obj_entry: &ObjectEntry,
         options: &RestoreOptions,

@@ -76,6 +76,42 @@ pub struct PrometheusMetrics {
     /// Queue length for pending operations
     pub queue_length: IntGaugeVec,
     
+    // Enhanced Performance Metrics
+    /// Memory usage by component (bytes)
+    pub memory_usage_by_component: GaugeVec,
+    /// I/O operations per second
+    pub io_ops_per_second: GaugeVec,
+    /// Network bytes transferred
+    pub network_bytes_total: IntCounterVec,
+    /// Database connection pool metrics
+    pub db_connection_pool_size: IntGaugeVec,
+    /// Cache hit ratio
+    pub cache_hit_ratio: GaugeVec,
+    /// Background task queue metrics
+    pub background_task_queue_depth: IntGaugeVec,
+    /// Component health status (0=unhealthy, 1=healthy)
+    pub component_health_status: IntGaugeVec,
+    
+    // Advanced Snapshot Metrics
+    /// Snapshot size distribution (histogram)
+    pub snapshot_size_distribution: HistogramVec,
+    /// Compression efficiency by algorithm
+    pub compression_efficiency: GaugeVec,
+    /// Data deduplication ratio
+    pub deduplication_ratio: GaugeVec,
+    /// State collection latency by component
+    pub state_collection_latency: HistogramVec,
+    /// Incremental snapshot delta size
+    pub incremental_delta_size: HistogramVec,
+    
+    // Resource Utilization Metrics
+    /// Disk usage by type (snapshots, logs, temp)
+    pub disk_usage_by_type: GaugeVec,
+    /// CPU usage by operation type
+    pub cpu_usage_by_operation: GaugeVec,
+    /// Thread pool utilization
+    pub thread_pool_utilization: GaugeVec,
+    
     /// Start time for uptime calculation
     start_time: Instant,
 }
@@ -207,6 +243,84 @@ impl PrometheusMetrics {
             Opts::new("queue_length", "Queue length for pending operations"),
             &["queue_type"],
         ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create queue_length metric: {}", e)))?;
+
+        // Enhanced Performance Metrics
+        let memory_usage_by_component = GaugeVec::new(
+            Opts::new("memory_usage_by_component_bytes", "Memory usage by component in bytes"),
+            &["component", "memory_type"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create memory_usage_by_component metric: {}", e)))?;
+
+        let io_ops_per_second = GaugeVec::new(
+            Opts::new("io_ops_per_second", "I/O operations per second"),
+            &["operation_type", "device"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create io_ops_per_second metric: {}", e)))?;
+
+        let network_bytes_total = IntCounterVec::new(
+            Opts::new("network_bytes_total", "Total network bytes transferred"),
+            &["direction", "protocol"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create network_bytes_total metric: {}", e)))?;
+
+        let db_connection_pool_size = IntGaugeVec::new(
+            Opts::new("db_connection_pool_size", "Database connection pool size"),
+            &["pool_name", "status"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create db_connection_pool_size metric: {}", e)))?;
+
+        let cache_hit_ratio = GaugeVec::new(
+            Opts::new("cache_hit_ratio", "Cache hit ratio (0.0 to 1.0)"),
+            &["cache_type", "component"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create cache_hit_ratio metric: {}", e)))?;
+
+        let background_task_queue_depth = IntGaugeVec::new(
+            Opts::new("background_task_queue_depth", "Background task queue depth"),
+            &["task_type", "priority"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create background_task_queue_depth metric: {}", e)))?;
+
+        let component_health_status = IntGaugeVec::new(
+            Opts::new("component_health_status", "Component health status (0=unhealthy, 1=healthy)"),
+            &["component"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create component_health_status metric: {}", e)))?;
+
+        // Advanced Snapshot Metrics
+        let snapshot_size_distribution = HistogramVec::new(
+            HistogramOpts::new("snapshot_size_distribution_bytes", "Snapshot size distribution in bytes"),
+            &["snapshot_type", "compression"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create snapshot_size_distribution metric: {}", e)))?;
+
+        let compression_efficiency = GaugeVec::new(
+            Opts::new("compression_efficiency_ratio", "Compression efficiency ratio"),
+            &["algorithm", "data_type"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create compression_efficiency metric: {}", e)))?;
+
+        let deduplication_ratio = GaugeVec::new(
+            Opts::new("deduplication_ratio", "Data deduplication ratio"),
+            &["data_type", "component"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create deduplication_ratio metric: {}", e)))?;
+
+        let state_collection_latency = HistogramVec::new(
+            HistogramOpts::new("state_collection_latency_seconds", "State collection latency by component"),
+            &["component", "collection_type"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create state_collection_latency metric: {}", e)))?;
+
+        let incremental_delta_size = HistogramVec::new(
+            HistogramOpts::new("incremental_delta_size_bytes", "Incremental snapshot delta size in bytes"),
+            &["snapshot_type", "component"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create incremental_delta_size metric: {}", e)))?;
+
+        // Resource Utilization Metrics
+        let disk_usage_by_type = GaugeVec::new(
+            Opts::new("disk_usage_by_type_bytes", "Disk usage by type in bytes"),
+            &["usage_type", "mount_point"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create disk_usage_by_type metric: {}", e)))?;
+
+        let cpu_usage_by_operation = GaugeVec::new(
+            Opts::new("cpu_usage_by_operation_percent", "CPU usage by operation type"),
+            &["operation_type", "component"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create cpu_usage_by_operation metric: {}", e)))?;
+
+        let thread_pool_utilization = GaugeVec::new(
+            Opts::new("thread_pool_utilization_ratio", "Thread pool utilization ratio"),
+            &["pool_name", "status"],
+        ).map_err(|e| crate::types::error::SnapshotError::configuration(format!("Failed to create thread_pool_utilization metric: {}", e)))?;
         
         // Register all metrics
         registry.register(Box::new(snapshot_creation_total.clone()))?;
@@ -239,6 +353,23 @@ impl PrometheusMetrics {
         registry.register(Box::new(throughput_ops_per_second.clone()))?;
         registry.register(Box::new(queue_length.clone()))?;
         
+        // Register enhanced metrics
+        registry.register(Box::new(memory_usage_by_component.clone()))?;
+        registry.register(Box::new(io_ops_per_second.clone()))?;
+        registry.register(Box::new(network_bytes_total.clone()))?;
+        registry.register(Box::new(db_connection_pool_size.clone()))?;
+        registry.register(Box::new(cache_hit_ratio.clone()))?;
+        registry.register(Box::new(background_task_queue_depth.clone()))?;
+        registry.register(Box::new(component_health_status.clone()))?;
+        registry.register(Box::new(snapshot_size_distribution.clone()))?;
+        registry.register(Box::new(compression_efficiency.clone()))?;
+        registry.register(Box::new(deduplication_ratio.clone()))?;
+        registry.register(Box::new(state_collection_latency.clone()))?;
+        registry.register(Box::new(incremental_delta_size.clone()))?;
+        registry.register(Box::new(disk_usage_by_type.clone()))?;
+        registry.register(Box::new(cpu_usage_by_operation.clone()))?;
+        registry.register(Box::new(thread_pool_utilization.clone()))?;
+        
         debug!("Prometheus metrics initialized successfully");
         
         Ok(Self {
@@ -266,6 +397,21 @@ impl PrometheusMetrics {
             error_rate,
             throughput_ops_per_second,
             queue_length,
+            memory_usage_by_component,
+            io_ops_per_second,
+            network_bytes_total,
+            db_connection_pool_size,
+            cache_hit_ratio,
+            background_task_queue_depth,
+            component_health_status,
+            snapshot_size_distribution,
+            compression_efficiency,
+            deduplication_ratio,
+            state_collection_latency,
+            incremental_delta_size,
+            disk_usage_by_type,
+            cpu_usage_by_operation,
+            thread_pool_utilization,
             start_time,
         })
     }
@@ -374,6 +520,114 @@ impl PrometheusMetrics {
         debug!("Updated {} queue length: {}", queue_type, length);
     }
     
+    /// Update enhanced performance metrics
+    #[instrument(skip(self))]
+    pub fn update_component_memory_usage(&self, component: &str, memory_type: &str, bytes: f64) {
+        self.memory_usage_by_component
+            .with_label_values(&[component, memory_type])
+            .set(bytes);
+        debug!("Updated {} {} memory usage: {:.2}MB", component, memory_type, bytes / 1_000_000.0);
+    }
+
+    /// Update I/O operations per second
+    #[instrument(skip(self))]
+    pub fn update_io_ops_per_second(&self, operation_type: &str, device: &str, ops: f64) {
+        self.io_ops_per_second
+            .with_label_values(&[operation_type, device])
+            .set(ops);
+        debug!("Updated {} I/O ops on {}: {:.2}/s", operation_type, device, ops);
+    }
+
+    /// Update network bytes transferred
+    #[instrument(skip(self))]
+    pub fn record_network_bytes(&self, direction: &str, protocol: &str, bytes: u64) {
+        self.network_bytes_total
+            .with_label_values(&[direction, protocol])
+            .inc_by(bytes);
+        debug!("Recorded {} {} network bytes: {:.2}KB", direction, protocol, bytes as f64 / 1024.0);
+    }
+
+    /// Update cache hit ratio
+    #[instrument(skip(self))]
+    pub fn update_cache_hit_ratio(&self, cache_type: &str, component: &str, ratio: f64) {
+        self.cache_hit_ratio
+            .with_label_values(&[cache_type, component])
+            .set(ratio);
+        debug!("Updated {} cache hit ratio for {}: {:.2}%", cache_type, component, ratio * 100.0);
+    }
+
+    /// Update component health status
+    #[instrument(skip(self))]
+    pub fn update_component_health(&self, component: &str, is_healthy: bool) {
+        self.component_health_status
+            .with_label_values(&[component])
+            .set(if is_healthy { 1 } else { 0 });
+        debug!("Updated {} health status: {}", component, if is_healthy { "healthy" } else { "unhealthy" });
+    }
+
+    /// Record snapshot size distribution
+    #[instrument(skip(self))]
+    pub fn record_snapshot_size(&self, snapshot_type: &str, compression: &str, size_bytes: f64) {
+        self.snapshot_size_distribution
+            .with_label_values(&[snapshot_type, compression])
+            .observe(size_bytes);
+        debug!("Recorded {} {} snapshot size: {:.2}MB", snapshot_type, compression, size_bytes / 1_000_000.0);
+    }
+
+    /// Update compression efficiency
+    #[instrument(skip(self))]
+    pub fn update_compression_efficiency(&self, algorithm: &str, data_type: &str, efficiency: f64) {
+        self.compression_efficiency
+            .with_label_values(&[algorithm, data_type])
+            .set(efficiency);
+        debug!("Updated {} compression efficiency for {}: {:.2}%", algorithm, data_type, efficiency * 100.0);
+    }
+
+    /// Record state collection latency
+    #[instrument(skip(self))]
+    pub fn record_state_collection_latency(&self, component: &str, collection_type: &str, duration_seconds: f64) {
+        self.state_collection_latency
+            .with_label_values(&[component, collection_type])
+            .observe(duration_seconds);
+        debug!("Recorded {} {} collection latency: {:.2}ms", component, collection_type, duration_seconds * 1000.0);
+    }
+
+    /// Update disk usage by type
+    #[instrument(skip(self))]
+    pub fn update_disk_usage(&self, usage_type: &str, mount_point: &str, bytes: f64) {
+        self.disk_usage_by_type
+            .with_label_values(&[usage_type, mount_point])
+            .set(bytes);
+        debug!("Updated {} disk usage on {}: {:.2}GB", usage_type, mount_point, bytes / 1_000_000_000.0);
+    }
+
+    /// Record snapshot operation
+    #[instrument(skip(self))]
+    pub fn record_snapshot_operation(&self, operation_type: &str) {
+        self.snapshot_creation_total
+            .with_label_values(&[operation_type])
+            .inc();
+        debug!("Recorded snapshot operation: {}", operation_type);
+    }
+
+    /// Record snapshot duration
+    #[instrument(skip(self))]
+    pub fn record_snapshot_duration(&self, duration_seconds: f64) {
+        self.snapshot_creation_duration
+            .with_label_values(&["smart_scheduled"])
+            .observe(duration_seconds);
+        debug!("Recorded snapshot duration: {:.2}s", duration_seconds);
+    }
+
+    /// Record error
+    #[instrument(skip(self))]
+    pub fn record_error(&self, error_type: &str) {
+        self.errors_total
+            .with_label_values(&[error_type])
+            .inc();
+        debug!("Recorded error: {}", error_type);
+    }
+
     /// Export metrics in Prometheus format
     #[instrument(skip(self))]
     pub fn export_metrics(&self) -> SnapshotResult<String> {

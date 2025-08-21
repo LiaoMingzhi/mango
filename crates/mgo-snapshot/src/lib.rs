@@ -16,6 +16,7 @@ pub mod core_integration;
 pub mod incremental;
 pub mod strategy;
 pub mod performance;
+pub mod scheduler;
 
 // API and monitoring modules
 #[cfg(feature = "api")]
@@ -78,11 +79,12 @@ pub async fn setup_db_state(
 pub use types::{
     SnapshotId, SnapshotData, SnapshotMetadata, SnapshotType,
     error::{SnapshotError, SnapshotResult},
-    config::SnapshotConfig,
+    config::{SnapshotConfig, CompressionPriority},
 };
 
 pub use storage::{SnapshotStorage, LocalSnapshotStorage};
 pub use manager::SnapshotManager;
+pub use creator::compressor::CompressionStats;
 
 // Re-export API and metrics types when features are enabled
 #[cfg(feature = "api")]

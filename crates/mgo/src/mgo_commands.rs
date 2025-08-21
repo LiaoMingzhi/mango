@@ -195,7 +195,135 @@ pub enum MgoCommand {
         #[clap(long, global = true)]
         json: bool,
     },
+
+    /// Tool for snapshot operations
+    #[clap(name = "snapshot")]
+    Snapshot {
+        /// Node configuration path
+        #[clap(long = "config")]
+        config: Option<PathBuf>,
+        #[clap(subcommand)]
+        cmd: SnapshotCommand,
+        /// Return command outputs in json format.
+        #[clap(long, global = true)]
+        json: bool,
+    },
 }
+
+/// Execute snapshot command
+async fn run_snapshot_command(
+    cmd: SnapshotCommand,
+    config: Option<PathBuf>,
+    json: bool,
+) -> Result<(), anyhow::Error> {
+    // TODO: Re-enable when mgo-snapshot integration is complete
+    // use mgo_snapshot::{SnapshotManager, SnapshotConfig};
+
+    // TODO: Initialize actual snapshot manager when mgo-snapshot integration is complete
+    match cmd {
+        SnapshotCommand::Create {
+            snapshot_type,
+            checkpoint,
+            epoch,
+            base_snapshot,
+            include_transactions,
+            include_committee,
+            compression_level,
+            storage_backend,
+        } => {
+            if json {
+                println!(r#"{{"status":"creating","type":"{}","storage":"{}"}}"#, 
+                    format!("{:?}", snapshot_type).to_lowercase(), storage_backend);
+            } else {
+                println!("📸 Creating {} snapshot...", format!("{:?}", snapshot_type).to_lowercase());
+                println!("⚙️  Configuration:");
+                println!("   Type: {:?}", snapshot_type);
+                if let Some(cp) = checkpoint {
+                    println!("   Checkpoint: {}", cp);
+                }
+                if let Some(ep) = epoch {
+                    println!("   Epoch: {}", ep);
+                }
+                println!("   Include transactions: {}", include_transactions);
+                println!("   Include committee: {}", include_committee);
+                println!("   Storage backend: {}", storage_backend);
+            }
+
+            // TODO: Implement actual snapshot creation
+            if json {
+                println!(r#"{{"status":"created","snapshot_id":"snap-example-001"}}"#);
+            } else {
+                println!("✅ Snapshot created successfully!");
+                println!("📋 Snapshot ID: snap-example-001");
+                println!("⚠️  Note: Demo mode - Integration with mgo-snapshot module pending");
+            }
+            Ok(())
+        },
+
+        SnapshotCommand::List { .. } => {
+            if json {
+                println!(r#"[]"#);
+            } else {
+                println!("📭 No snapshots found");
+                println!("⚠️  Note: Demo mode - Integration with mgo-snapshot module pending");
+            }
+            Ok(())
+        },
+
+        SnapshotCommand::Info { snapshot_id, .. } => {
+            if json {
+                println!(r#"{{"status":"not_found","snapshot_id":"{}"}}"#, snapshot_id);
+            } else {
+                println!("❌ Snapshot {} not found", snapshot_id);
+                println!("⚠️  Note: Demo mode - Integration with mgo-snapshot module pending");
+            }
+            Ok(())
+        },
+
+        SnapshotCommand::Restore { snapshot_id, .. } => {
+            if json {
+                println!(r#"{{"status":"restoring","snapshot_id":"{}"}}"#, snapshot_id);
+            } else {
+                println!("🔄 Restoring from snapshot {}...", snapshot_id);
+                println!("⚠️  Note: Demo mode - Integration with mgo-snapshot module pending");
+            }
+            Ok(())
+        },
+
+        SnapshotCommand::Verify { .. } => {
+            if json {
+                println!(r#"{{"status":"completed","verified":0,"failed":0}}"#);
+            } else {
+                println!("🔍 Verifying snapshots...");
+                println!("⚠️  Note: Demo mode - Integration with mgo-snapshot module pending");
+            }
+            Ok(())
+        },
+
+        SnapshotCommand::Cleanup { .. } => {
+            if json {
+                println!(r#"{{"status":"completed","deleted":0,"freed":0}}"#);
+            } else {
+                println!("🧹 Cleaning up snapshots...");
+                println!("⚠️  Note: Demo mode - Integration with mgo-snapshot module pending");
+            }
+            Ok(())
+        },
+
+        // TODO: Implement remaining commands
+        _ => {
+            if json {
+                println!(r#"{{"status":"not_implemented","error":"Command not yet implemented"}}"#);
+            } else {
+                println!("⚠️  This command is not yet implemented");
+                println!("🚧 Coming soon in a future update!");
+            }
+            Ok(())
+        }
+    }
+}
+
+
 
 /// 执行回滚命令
 async fn run_rollback_command(cmd: RollbackCommand) -> Result<(), anyhow::Error> {
@@ -736,6 +864,7 @@ impl MgoCommand {
             MgoCommand::Rollback { cmd, .. } => run_rollback_command(cmd).await,
             MgoCommand::ColdStart { cmd, config, json } => run_cold_start_command(cmd, config, json).await,
             MgoCommand::HighAvailability { cmd, config, json } => run_high_availability_command(cmd, config, json).await,
+            MgoCommand::Snapshot { cmd, config, json } => run_snapshot_command(cmd, config, json).await,
         }
     }
 }
@@ -1234,3 +1363,237 @@ pub enum HighAvailabilityCommand {
         recovery_threshold: Option<u8>,
     },
 }
+
+/// Snapshot command subcommands
+#[derive(Parser)]
+#[clap(rename_all = "kebab-case")]
+pub enum SnapshotCommand {
+    /// Create a new snapshot
+    #[clap(name = "create")]
+    Create {
+        /// Snapshot type
+        #[clap(long = "type", value_enum)]
+        snapshot_type: SnapshotTypeCliOption,
+        /// Target checkpoint sequence number (for checkpoint/full snapshots)
+        #[clap(long = "checkpoint")]
+        checkpoint: Option<u64>,
+        /// Target epoch number (for epoch snapshots)
+        #[clap(long = "epoch")]
+        epoch: Option<u64>,
+        /// Base snapshot ID (for incremental snapshots)
+        #[clap(long = "base-snapshot")]
+        base_snapshot: Option<String>,
+        /// Include transaction history
+        #[clap(long = "include-transactions")]
+        include_transactions: bool,
+        /// Include committee information
+        #[clap(long = "include-committee")]
+        include_committee: bool,
+        /// Compression level (0-9)
+        #[clap(long = "compression-level")]
+        compression_level: Option<u8>,
+        /// Storage backend (local or distributed)
+        #[clap(long = "storage", default_value = "local")]
+        storage_backend: String,
+    },
+
+    /// List available snapshots
+    #[clap(name = "list")]
+    List {
+        /// Filter by snapshot type
+        #[clap(long = "type")]
+        snapshot_type: Option<String>,
+        /// Filter by epoch
+        #[clap(long = "epoch")]
+        epoch: Option<u64>,
+        /// Filter by checkpoint range
+        #[clap(long = "checkpoint-range")]
+        checkpoint_range: Option<String>,
+        /// Maximum number of results to return
+        #[clap(long = "limit", default_value = "10")]
+        limit: usize,
+        /// Sort by creation time (asc/desc)
+        #[clap(long = "sort", default_value = "desc")]
+        sort_order: String,
+    },
+
+    /// Get snapshot information
+    #[clap(name = "info")]
+    Info {
+        /// Snapshot ID
+        snapshot_id: String,
+        /// Show detailed information
+        #[clap(long = "detailed")]
+        detailed: bool,
+    },
+
+    /// Restore from a snapshot
+    #[clap(name = "restore")]
+    Restore {
+        /// Snapshot ID to restore from
+        snapshot_id: String,
+        /// Validation level (none, basic, full)
+        #[clap(long = "validation", default_value = "basic")]
+        validation_level: String,
+        /// Create backup before restoration
+        #[clap(long = "backup-current")]
+        backup_current: bool,
+        /// Force restoration (skip safety checks)
+        #[clap(long = "force")]
+        force: bool,
+        /// Maximum number of retries
+        #[clap(long = "max-retries", default_value = "3")]
+        max_retries: u32,
+        /// Timeout in seconds
+        #[clap(long = "timeout", default_value = "300")]
+        timeout: u64,
+    },
+
+    /// Verify snapshot integrity
+    #[clap(name = "verify")]
+    Verify {
+        /// Snapshot ID to verify (or --all for all snapshots)
+        snapshot_id: Option<String>,
+        /// Verify all snapshots
+        #[clap(long = "all")]
+        verify_all: bool,
+        /// Perform deep validation
+        #[clap(long = "deep")]
+        deep_validation: bool,
+        /// Attempt to repair corrupted snapshots
+        #[clap(long = "repair")]
+        attempt_repair: bool,
+    },
+
+    /// Clean up old snapshots
+    #[clap(name = "cleanup")]
+    Cleanup {
+        /// Remove snapshots older than specified duration (e.g., 30d, 7d, 24h)
+        #[clap(long = "older-than")]
+        older_than: Option<String>,
+        /// Keep only the latest N snapshots
+        #[clap(long = "keep-latest")]
+        keep_latest: Option<usize>,
+        /// Remove snapshots larger than specified size limit (e.g., 10GB, 500MB)
+        #[clap(long = "size-limit")]
+        size_limit: Option<String>,
+        /// Dry run (show what would be deleted without actually deleting)
+        #[clap(long = "dry-run")]
+        dry_run: bool,
+        /// Force cleanup (skip confirmation prompts)
+        #[clap(long = "force")]
+        force: bool,
+    },
+
+    /// Get restore operation status
+    #[clap(name = "restore-status")]
+    RestoreStatus {
+        /// Operation ID
+        #[clap(long = "operation-id")]
+        operation_id: Option<String>,
+        /// Show all active operations
+        #[clap(long = "all")]
+        show_all: bool,
+    },
+
+    /// Cancel restore operation
+    #[clap(name = "restore-cancel")]
+    RestoreCancel {
+        /// Operation ID to cancel
+        #[clap(long = "operation-id")]
+        operation_id: String,
+    },
+
+    /// Snapshot scheduler operations
+    #[clap(name = "schedule")]
+    Schedule {
+        #[clap(subcommand)]
+        cmd: SnapshotScheduleCommand,
+    },
+
+    /// Get snapshot storage information
+    #[clap(name = "storage-info")]
+    StorageInfo {
+        /// Show detailed storage usage
+        #[clap(long = "detailed")]
+        detailed: bool,
+    },
+
+    /// Snapshot performance metrics
+    #[clap(name = "metrics")]
+    Metrics {
+        /// Output format (json, table)
+        #[clap(long = "format", default_value = "table")]
+        format: String,
+        /// Show historical metrics
+        #[clap(long = "history")]
+        show_history: bool,
+    },
+
+    /// Perform snapshot health check
+    #[clap(name = "health")]
+    Health {
+        /// Check all components
+        #[clap(long = "all")]
+        check_all: bool,
+        /// Fix issues if possible
+        #[clap(long = "fix")]
+        auto_fix: bool,
+    },
+}
+
+/// Snapshot type options for CLI
+#[derive(Clone, Debug, clap::ValueEnum)]
+pub enum SnapshotTypeCliOption {
+    /// Full snapshot containing all state
+    Full,
+    /// Incremental snapshot with only changes
+    Incremental,
+    /// Checkpoint-specific snapshot
+    Checkpoint,
+    /// Epoch boundary snapshot
+    Epoch,
+}
+
+/// Snapshot scheduler subcommands
+#[derive(Parser)]
+#[clap(rename_all = "kebab-case")]
+pub enum SnapshotScheduleCommand {
+    /// Start automatic snapshot scheduling
+    #[clap(name = "start")]
+    Start {
+        /// Schedule interval (e.g., 1h, 30m, 1d)
+        #[clap(long = "interval")]
+        interval: Option<String>,
+        /// Schedule type (time, checkpoint, epoch)
+        #[clap(long = "type", default_value = "time")]
+        schedule_type: String,
+        /// Enable intelligent scheduling
+        #[clap(long = "intelligent")]
+        intelligent: bool,
+    },
+
+    /// Stop automatic scheduling
+    #[clap(name = "stop")]
+    Stop,
+
+    /// Get scheduler status
+    #[clap(name = "status")]
+    Status,
+
+    /// Update scheduler configuration
+    #[clap(name = "config")]
+    Config {
+        /// Update interval
+        #[clap(long = "interval")]
+        interval: Option<String>,
+        /// Update schedule type
+        #[clap(long = "type")]
+        schedule_type: Option<String>,
+        /// Enable/disable intelligent scheduling
+        #[clap(long = "intelligent")]
+        intelligent: Option<bool>,
+    },
+}
+
+

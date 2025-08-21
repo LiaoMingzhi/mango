@@ -14,11 +14,13 @@ use tracing::{info, debug, warn, error, instrument};
 use crate::types::error::{SnapshotResult, SnapshotError};
 use crate::performance::memory_management::AutoMemoryManager;
 
-/// Configuration for batch processing
+/// Enhanced configuration for intelligent batch processing
 #[derive(Debug, Clone)]
 pub struct BatchConfig {
     /// Maximum batch size for processing
     pub max_batch_size: usize,
+    /// Minimum batch size to avoid overhead
+    pub min_batch_size: usize,
     /// Maximum number of concurrent workers
     pub max_workers: usize,
     /// Timeout for individual batch operations
@@ -27,6 +29,8 @@ pub struct BatchConfig {
     pub backpressure_threshold: usize,
     /// Enable adaptive batch sizing
     pub adaptive_sizing: bool,
+    /// Enable intelligent load balancing
+    pub intelligent_load_balancing: bool,
     /// Target throughput (items per second)
     pub target_throughput: Option<f64>,
 }
@@ -35,10 +39,12 @@ impl Default for BatchConfig {
     fn default() -> Self {
         Self {
             max_batch_size: 1000,
+            min_batch_size: 10,
             max_workers: num_cpus::get(),
             batch_timeout: Duration::from_secs(30),
             backpressure_threshold: 10,
             adaptive_sizing: true,
+            intelligent_load_balancing: true,
             target_throughput: None,
         }
     }

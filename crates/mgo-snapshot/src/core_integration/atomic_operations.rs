@@ -14,6 +14,7 @@ use crate::types::{
 };
 use crate::core_integration::{EnhancedStateWriter, EnhancedDatabaseAccessor};
 use mgo_core::authority::authority_store_tables::AuthorityPerpetualTables;
+use mgo_core::authority::SnapshotTransaction;
 use typed_store::rocks::DBBatch;
 
 /// Atomic transaction state for snapshot operations
@@ -172,21 +173,68 @@ impl AtomicRestoreContext {
         }
 
         let mut total_restored = 0u64;
-        let mut _restore_results: Vec<u64> = Vec::new();
+
+        // Begin the mgo-core snapshot transaction
+        let authority_state = self.state_writer.authority_state();
+        let snapshot_transaction = match authority_state.begin_snapshot_transaction().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                error!("Failed to begin snapshot transaction: {}", e);
+                return Err(SnapshotError::InvalidOperation {
+                    operation: "begin_snapshot_transaction".to_string(),
+                    reason: format!("Failed to begin snapshot transaction: {}", e),
+                });
+            }
+        };
+
+        info!("Started mgo-core snapshot transaction: {}", snapshot_transaction.transaction_id);
 
         // Execute restoration operations by component type
-        match &metadata.snapshot_type {
+        let restore_result = match &metadata.snapshot_type {
             crate::types::SnapshotType::Full { .. } => {
-                total_restored = self.execute_full_restore(snapshot_data, metadata).await?;
+                self.execute_full_restore(snapshot_data, metadata, &snapshot_transaction).await
             }
             crate::types::SnapshotType::Incremental { .. } => {
-                total_restored = self.execute_incremental_restore(snapshot_data, metadata).await?;
+                self.execute_incremental_restore(snapshot_data, metadata, &snapshot_transaction).await
             }
             crate::types::SnapshotType::Checkpoint { .. } => {
-                total_restored = self.execute_checkpoint_restore(snapshot_data, metadata).await?;
+                self.execute_checkpoint_restore(snapshot_data, metadata, &snapshot_transaction).await
             }
             crate::types::SnapshotType::Epoch { .. } => {
-                total_restored = self.execute_epoch_restore(snapshot_data, metadata).await?;
+                self.execute_epoch_restore(snapshot_data, metadata, &snapshot_transaction).await
+            }
+        };
+
+        // Handle the restoration result
+        match restore_result {
+            Ok(restored_count) => {
+                total_restored = restored_count;
+                info!("Restoration completed successfully: {} items restored", total_restored);
+
+                // Commit the snapshot transaction
+                if let Err(e) = snapshot_transaction.commit().await {
+                    error!("Failed to commit snapshot transaction: {}", e);
+                    // Attempt rollback
+                    if let Err(rollback_err) = snapshot_transaction.rollback().await {
+                        error!("Failed to rollback snapshot transaction: {}", rollback_err);
+                    }
+                    return Err(SnapshotError::InvalidOperation {
+                        operation: "commit_snapshot_transaction".to_string(),
+                        reason: format!("Failed to commit snapshot transaction: {}", e),
+                    });
+                }
+
+                info!("Snapshot transaction committed successfully: {}", snapshot_transaction.transaction_id);
+            }
+            Err(e) => {
+                error!("Restoration failed: {}", e);
+                
+                // Rollback the snapshot transaction
+                if let Err(rollback_err) = snapshot_transaction.rollback().await {
+                    error!("Failed to rollback snapshot transaction: {}", rollback_err);
+                }
+                
+                return Err(e);
             }
         }
 
@@ -314,17 +362,34 @@ impl AtomicRestoreContext {
         &self,
         snapshot_data: &SnapshotData,
         _metadata: &SnapshotMetadata,
+        snapshot_transaction: &SnapshotTransaction,
     ) -> SnapshotResult<u64> {
         info!("Executing full snapshot restore");
         
         let mut total_restored = 0u64;
 
-        // Apply snapshot data atomically
-        // In a real implementation, this would use database transactions
+        // Apply snapshot data atomically using the snapshot transaction
+        // Record the operation in the mgo-core transaction
+        use mgo_core::authority::SnapshotOperation;
+        use mgo_types::base_types::ObjectID;
         
         // For now, we assume snapshot_data.data contains serialized component data
         // This is a simplified implementation
         if !snapshot_data.data.is_empty() {
+            // Record the restore operation in the snapshot transaction
+            let operation = SnapshotOperation::RestoreObject {
+                object_id: ObjectID::ZERO, // Placeholder - in real implementation would be per-object
+                data: snapshot_data.data.clone(),
+            };
+            
+            if let Err(e) = snapshot_transaction.add_operation(operation).await {
+                error!("Failed to add operation to snapshot transaction: {}", e);
+                return Err(SnapshotError::InvalidOperation {
+                    operation: "add_operation".to_string(),
+                    reason: format!("Failed to add operation to snapshot transaction: {}", e),
+                });
+            }
+
             // Try to apply as object store data first
             match self.state_writer.apply_object_store_data(&snapshot_data.data, &self.options).await {
                 Ok(count) => {
@@ -348,6 +413,7 @@ impl AtomicRestoreContext {
         &self,
         snapshot_data: &SnapshotData,
         _metadata: &SnapshotMetadata,
+        snapshot_transaction: &SnapshotTransaction,
     ) -> SnapshotResult<u64> {
         info!("Executing incremental snapshot restore");
         
@@ -355,7 +421,7 @@ impl AtomicRestoreContext {
         // For now, treat as full restore
         warn!("Incremental restore not fully implemented, treating as full restore");
         
-        self.execute_full_restore(snapshot_data, _metadata).await
+        self.execute_full_restore(snapshot_data, _metadata, snapshot_transaction).await
     }
 
     /// Execute checkpoint snapshot restore
@@ -363,6 +429,7 @@ impl AtomicRestoreContext {
         &self,
         snapshot_data: &SnapshotData,
         _metadata: &SnapshotMetadata,
+        _snapshot_transaction: &SnapshotTransaction,
     ) -> SnapshotResult<u64> {
         info!("Executing checkpoint snapshot restore");
         
@@ -392,6 +459,7 @@ impl AtomicRestoreContext {
         &self,
         snapshot_data: &SnapshotData,
         _metadata: &SnapshotMetadata,
+        _snapshot_transaction: &SnapshotTransaction,
     ) -> SnapshotResult<u64> {
         info!("Executing epoch snapshot restore");
         
@@ -399,7 +467,7 @@ impl AtomicRestoreContext {
         // For now, treat as checkpoint restore
         warn!("Epoch restore not fully implemented, treating as checkpoint restore");
         
-        self.execute_checkpoint_restore(snapshot_data, _metadata).await
+        self.execute_checkpoint_restore(snapshot_data, _metadata, _snapshot_transaction).await
     }
 
     /// Validate restore consistency

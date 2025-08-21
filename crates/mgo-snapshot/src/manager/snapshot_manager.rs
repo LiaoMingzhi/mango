@@ -152,15 +152,13 @@ impl SnapshotManager {
             };
             
             // Start the snapshot transaction in mgo-core
-            // TODO: The begin_snapshot_transaction method doesn't exist yet in mgo-core
-            // For now, use a placeholder
-            warn!("begin_snapshot_transaction not implemented in mgo-core, using placeholder");
-            // let snapshot_transaction = context_arc.state_writer.authority_state().database
-            //     .begin_snapshot_transaction().await
-            //     .map_err(|e| SnapshotError::InvalidOperation {
-            //         operation: "begin_snapshot_transaction".to_string(),
-            //         reason: format!("Failed to begin snapshot transaction: {}", e),
-            //     })?;
+            info!("Beginning snapshot transaction for atomic restoration");
+            let snapshot_transaction = context_arc.state_writer.authority_state()
+                .begin_snapshot_transaction().await
+                .map_err(|e| SnapshotError::InvalidOperation {
+                    operation: "begin_snapshot_transaction".to_string(),
+                    reason: format!("Failed to begin snapshot transaction: {}", e),
+                })?;
             
             // Execute the atomic restoration
             // Since we need to call a &mut method but context_arc is shared, we need to access it differently
@@ -176,8 +174,20 @@ impl SnapshotManager {
             match restoration_result {
                 Ok(_restored_count) => {
                     info!("Atomic restoration successful, committing transaction");
-                    // TODO: Implement transaction commit when the API is available
-                    info!("Transaction commit placeholder - actual implementation needed");
+                    
+                    // Commit the snapshot transaction
+                    match snapshot_transaction.commit().await {
+                        Ok(_) => {
+                            info!("Successfully committed snapshot transaction");
+                        }
+                        Err(e) => {
+                            error!("Failed to commit snapshot transaction: {}", e);
+                            return Err(SnapshotError::InvalidOperation {
+                                operation: "commit_transaction".to_string(),
+                                reason: format!("Failed to commit snapshot transaction: {}", e),
+                            });
+                        }
+                    }
                     
                     // Create RestoreResult from the restoration
                     let restore_result = RestoreResult {
@@ -193,8 +203,19 @@ impl SnapshotManager {
                 }
                 Err(e) => {
                     error!("Atomic restoration failed, rolling back transaction: {}", e);
-                    // TODO: Implement transaction rollback when the API is available
-                    warn!("Transaction rollback placeholder - actual implementation needed");
+                    
+                    // Rollback the snapshot transaction
+                    match snapshot_transaction.rollback().await {
+                        Ok(_) => {
+                            info!("Successfully rolled back snapshot transaction");
+                        }
+                        Err(rollback_err) => {
+                            error!("Failed to rollback snapshot transaction: {}", rollback_err);
+                            // Even if rollback fails, we still return the original error
+                            warn!("Database may be in inconsistent state due to failed rollback");
+                        }
+                    }
+                    
                     Err(e)
                 }
             }

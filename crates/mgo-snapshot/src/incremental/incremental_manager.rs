@@ -167,7 +167,7 @@ impl IncrementalSnapshotManager {
         // Apply each delta in the chain
         for (delta_data, metadata) in snapshot_chain.iter().skip(1) {
             // Extract delta from snapshot data
-            // TODO: Adapt to new SnapshotData structure - try to deserialize as DeltaData
+            // Deserialize delta data from snapshot data structure
             let delta_bytes = &delta_data.data;
 
             let delta: DeltaData = bcs::from_bytes(delta_bytes)
@@ -258,8 +258,9 @@ impl IncrementalSnapshotManager {
             let mut cache = self.base_snapshot_cache.lock().await;
             cache.insert(base_snapshot_id, (snapshot_data.clone(), metadata.clone()));
             
-            // Limit cache size
-            if cache.len() > 1000 { // TODO: Add max_cache_size to PerformanceConfig
+            // Limit cache size based on max parallel operations
+            let max_cache_size = self.config.performance.max_parallel_operations as usize * 10;
+            if cache.len() > max_cache_size {
                 // Remove oldest entry (simple eviction)
                 if let Some(first_key) = cache.keys().next().copied() {
                     cache.remove(&first_key);

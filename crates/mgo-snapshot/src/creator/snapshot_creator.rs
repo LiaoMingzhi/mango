@@ -9,7 +9,7 @@ use crate::types::{
     config::SnapshotConfig,
     storage::SnapshotStorage,
 };
-use crate::creator::{StateCollector, SnapshotCompressor, SnapshotValidator};
+use crate::creator::{StateCollector, SnapshotCompressor, SnapshotValidator, ObjectStoreSnapshot, TransactionStoreSnapshot, CheckpointStoreSnapshot};
 
 
 
@@ -303,7 +303,7 @@ impl SnapshotCreator {
         let compressed_data = if request.compress {
             self.compressor.compress(&collected_data).await?
         } else {
-            collected_data
+            collected_data.clone()
         };
         
         // Phase 3: Validate snapshot
@@ -325,8 +325,8 @@ impl SnapshotCreator {
         );
         metadata.created_at = start_time;
         let compressed_size = compressed_data.total_size();
-        let checksum = compressed_data.compute_checksum();
-        let data_bytes = compressed_data.into_bytes();
+        let checksum = compressed_data.compute_checksum()?;
+        let data_bytes = compressed_data.clone().into_bytes()?;
         
         metadata.compressed_size = compressed_size;
         metadata.uncompressed_size = uncompressed_size;
@@ -362,7 +362,7 @@ impl SnapshotCreator {
                 1.0
             },
             component_count: request.components.len(),
-            object_count: 0, // TODO: Implement actual object counting
+            object_count: self.count_objects_in_collected_data(&collected_data).await,
             validation_time_secs: validation_time,
         };
         
@@ -407,6 +407,34 @@ impl SnapshotCreator {
         let operations = self.active_operations.read().await;
         operations.iter().map(|(id, status)| (id.clone(), status.clone())).collect()
     }
+
+    /// Count objects in collected state data
+    async fn count_objects_in_collected_data(&self, collected_data: &CollectedStateData) -> u64 {
+        let mut total_objects = 0u64;
+
+        // Count objects in object store data
+        if let Some(ref object_data) = collected_data.object_store {
+            if let Ok(object_snapshot) = bcs::from_bytes::<ObjectStoreSnapshot>(object_data) {
+                total_objects += object_snapshot.objects.len() as u64;
+            }
+        }
+
+        // Count transactions (also considered objects in a broader sense)
+        if let Some(ref tx_data) = collected_data.transaction_store {
+            if let Ok(tx_snapshot) = bcs::from_bytes::<TransactionStoreSnapshot>(tx_data) {
+                total_objects += tx_snapshot.transactions.len() as u64;
+            }
+        }
+
+        // Count checkpoints
+        if let Some(ref checkpoint_data) = collected_data.checkpoint_store {
+            if let Ok(checkpoint_snapshot) = bcs::from_bytes::<CheckpointStoreSnapshot>(checkpoint_data) {
+                total_objects += checkpoint_snapshot.checkpoints.len() as u64;
+            }
+        }
+
+        total_objects
+    }
     
     /// Cancel an ongoing snapshot creation
     pub async fn cancel_creation(&self, snapshot_id: &SnapshotId) -> SnapshotResult<()> {
@@ -425,7 +453,7 @@ impl SnapshotCreator {
 }
 
 /// Collected state data from blockchain stores
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CollectedStateData {
     /// Authority state data
     pub authority_state: Option<Vec<u8>>,
@@ -450,9 +478,35 @@ pub struct CollectedStateData {
     
     /// Associated accumulator
     pub accumulator: Option<Accumulator>,
+    
+    /// Collection epoch
+    pub epoch: u64,
+    
+    /// Collection checkpoint sequence
+    pub checkpoint_seq: u64,
+    
+    /// Collection timestamp
+    pub collection_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl CollectedStateData {
+    /// Create new empty CollectedStateData
+    pub fn new() -> Self {
+        Self {
+            authority_state: None,
+            epoch_store: None,
+            checkpoint_store: None,
+            object_store: None,
+            transaction_store: None,
+            index_store: None,
+            consensus_state: None,
+            accumulator: None,
+            epoch: 0,
+            checkpoint_seq: 0,
+            collection_time: chrono::Utc::now(),
+        }
+    }
+
     /// Calculate total size of collected data
     pub fn total_size(&self) -> u64 {
         [
@@ -470,21 +524,72 @@ impl CollectedStateData {
         .sum()
     }
     
-    /// Get object count (placeholder implementation)
+    /// Get object count by analyzing collected state data
     pub fn object_count(&self) -> u64 {
-        // TODO: Implement actual object counting logic
-        0
+        let mut total_objects = 0u64;
+
+        // Count objects in object store data
+        if let Some(ref object_data) = self.object_store {
+            if let Ok(object_snapshot) = bcs::from_bytes::<ObjectStoreSnapshot>(object_data) {
+                total_objects += object_snapshot.objects.len() as u64;
+            }
+        }
+
+        // Count transactions (also considered objects in a broader sense)
+        if let Some(ref tx_data) = self.transaction_store {
+            if let Ok(tx_snapshot) = bcs::from_bytes::<TransactionStoreSnapshot>(tx_data) {
+                total_objects += tx_snapshot.transactions.len() as u64;
+            }
+        }
+
+        // Count checkpoints
+        if let Some(ref checkpoint_data) = self.checkpoint_store {
+            if let Ok(checkpoint_snapshot) = bcs::from_bytes::<CheckpointStoreSnapshot>(checkpoint_data) {
+                total_objects += checkpoint_snapshot.checkpoints.len() as u64;
+            }
+        }
+
+        total_objects
     }
     
-    /// Convert to bytes
-    pub fn into_bytes(self) -> Vec<u8> {
-        // TODO: Implement proper serialization
-        Vec::new()
+    /// Convert to serialized bytes
+    pub fn into_bytes(self) -> Result<Vec<u8>, SnapshotError> {
+        bcs::to_bytes(&self).map_err(|e| SnapshotError::DataAccess {
+            operation: "serialize_collected_data".to_string(),
+            details: format!("Failed to serialize collected state data: {}", e),
+        })
     }
     
-    /// Compute checksum
-    pub fn compute_checksum(&self) -> String {
-        // TODO: Implement checksum calculation
-        "placeholder_checksum".to_string()
+    /// Compute Blake3 checksum of all data
+    pub fn compute_checksum(&self) -> Result<String, SnapshotError> {
+        use blake3::Hasher;
+        
+        let mut hasher = Hasher::new();
+        
+        // Hash all components
+        if let Some(ref data) = self.authority_state {
+            hasher.update(data);
+        }
+        if let Some(ref data) = self.epoch_store {
+            hasher.update(data);
+        }
+        if let Some(ref data) = self.checkpoint_store {
+            hasher.update(data);
+        }
+        if let Some(ref data) = self.object_store {
+            hasher.update(data);
+        }
+        if let Some(ref data) = self.transaction_store {
+            hasher.update(data);
+        }
+        if let Some(ref data) = self.index_store {
+            hasher.update(data);
+        }
+        if let Some(ref data) = self.consensus_state {
+            hasher.update(data);
+        }
+        
+        let hash = hasher.finalize();
+        Ok(format!("{}", hash.to_hex()))
     }
 }

@@ -3,7 +3,7 @@
 //! This module implements compression for snapshot data.
 
 use crate::types::{
-    config::CompressionType,
+    config::{CompressionType, CompressionPriority},
     error::{SnapshotError, SnapshotResult},
 };
 use crate::creator::CollectedStateData;
@@ -11,6 +11,16 @@ use crate::creator::CollectedStateData;
 
 use std::io::{Read, Write};
 use tracing::{debug, info, instrument};
+
+/// Compression statistics
+#[derive(Debug, Clone)]
+pub struct CompressionStats {
+    pub algorithm: CompressionType,
+    pub level: i32,
+    pub total_compressed_bytes: u64,
+    pub total_original_bytes: u64,
+    pub compression_ratio: f64,
+}
 
 /// Snapshot compressor for reducing snapshot size
 /// 
@@ -38,6 +48,52 @@ impl SnapshotCompressor {
             level,
         })
     }
+
+    /// Create a new SnapshotCompressor with adaptive algorithm selection
+    pub fn new_adaptive(data_size_hint: usize, priority: CompressionPriority) -> SnapshotResult<Self> {
+        let algorithm = Self::select_optimal_algorithm(data_size_hint, priority);
+        Self::new(algorithm)
+    }
+
+    /// Select optimal compression algorithm based on data characteristics and priorities
+    pub fn select_optimal_algorithm(data_size: usize, priority: CompressionPriority) -> CompressionType {
+        match priority {
+            CompressionPriority::Speed => {
+                if data_size < 1024 * 1024 {  // < 1MB, no compression overhead
+                    CompressionType::None
+                } else {
+                    CompressionType::Lz4  // Fastest compression
+                }
+            }
+            CompressionPriority::Balanced => {
+                if data_size < 512 * 1024 {  // < 512KB
+                    CompressionType::Lz4
+                } else if data_size < 10 * 1024 * 1024 {  // < 10MB
+                    CompressionType::Zstd
+                } else {
+                    CompressionType::Gzip  // Better ratio for large files
+                }
+            }
+            CompressionPriority::Ratio => {
+                if data_size < 256 * 1024 {  // < 256KB, not worth complex compression
+                    CompressionType::Gzip
+                } else {
+                    CompressionType::Zstd  // Best ratio for large data
+                }
+            }
+        }
+    }
+
+    /// Get compression statistics
+    pub fn get_compression_stats(&self) -> CompressionStats {
+        CompressionStats {
+            algorithm: self.algorithm,
+            level: self.level,
+            total_compressed_bytes: 0, // Would be tracked in a real implementation
+            total_original_bytes: 0,
+            compression_ratio: 1.0,
+        }
+    }
     
     /// Compress collected state data
     #[instrument(level = "info", skip(self, data))]
@@ -53,6 +109,9 @@ impl SnapshotCompressor {
                 index_store: data.index_store.clone(),
                 consensus_state: data.consensus_state.clone(),
                 accumulator: data.accumulator.clone(),
+                epoch: data.epoch,
+                checkpoint_seq: data.checkpoint_seq,
+                collection_time: data.collection_time,
             });
         }
         
@@ -69,6 +128,9 @@ impl SnapshotCompressor {
             index_store: self.compress_optional_data(&data.index_store).await?,
             consensus_state: self.compress_optional_data(&data.consensus_state).await?,
             accumulator: data.accumulator.clone(), // Don't compress accumulator
+            epoch: data.epoch,
+            checkpoint_seq: data.checkpoint_seq,
+            collection_time: data.collection_time,
         };
         
         let compressed_size = compressed.total_size();

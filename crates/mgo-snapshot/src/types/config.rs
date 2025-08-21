@@ -132,7 +132,7 @@ impl Default for DistributedStorageConfig {
 }
 
 /// Compression types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CompressionType {
     None,
     Zstd,
@@ -143,6 +143,23 @@ pub enum CompressionType {
 impl Default for CompressionType {
     fn default() -> Self {
         Self::Zstd
+    }
+}
+
+/// Compression priority settings for adaptive algorithm selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CompressionPriority {
+    /// Prioritize compression speed over ratio
+    Speed,
+    /// Balanced speed and compression ratio
+    Balanced,
+    /// Prioritize compression ratio over speed
+    Ratio,
+}
+
+impl Default for CompressionPriority {
+    fn default() -> Self {
+        Self::Balanced
     }
 }
 
