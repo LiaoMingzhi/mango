@@ -18,6 +18,7 @@ build
 storage
 !consensus/core/src/storage
 !crates/mgo-types/src/storage
+!crates/mgo-snapshot/src/storage
 !narwhal/storage
 
 # Move-related files
