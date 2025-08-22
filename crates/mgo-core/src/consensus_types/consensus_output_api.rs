@@ -62,7 +62,7 @@ impl ConsensusOutputAPI for narwhal_types::ConsensusOutput {
         self.sub_dag.sub_dag_index
     }
 
-    fn transactions(&self) -> ConsensusOutputTransactions {
+    fn transactions(&self) -> ConsensusOutputTransactions<'_> {
         assert!(self.sub_dag.certificates.len() == self.batches.len());
         self.sub_dag
             .certificates
@@ -135,7 +135,7 @@ impl ConsensusOutputAPI for mysticeti_core::consensus::linearizer::CommittedSubD
         self.height
     }
 
-    fn transactions(&self) -> ConsensusOutputTransactions {
+    fn transactions(&self) -> ConsensusOutputTransactions<'_> {
         self.blocks
             .iter()
             .map(|block| {

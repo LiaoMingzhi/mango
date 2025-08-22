@@ -55,3 +55,6 @@ move-vm-profiler.workspace = true
 
 [target.'cfg(msim)'.dependencies]
 mgo-simulator.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

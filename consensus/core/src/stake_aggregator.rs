@@ -11,6 +11,7 @@ pub trait CommitteeThreshold {
 
 pub(crate) struct QuorumThreshold;
 
+#[allow(dead_code)]
 pub(crate) struct ValidityThreshold;
 
 impl CommitteeThreshold for QuorumThreshold {

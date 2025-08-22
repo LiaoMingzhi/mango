@@ -28,6 +28,7 @@ use tracing::{info, debug, warn, error, instrument};
 /// 
 /// Responsible for orchestrating the entire snapshot creation process including
 /// state collection, compression, validation, and storage.
+#[allow(dead_code)]
 pub struct SnapshotCreator {
     /// Configuration for snapshot creation
     config: SnapshotConfig,

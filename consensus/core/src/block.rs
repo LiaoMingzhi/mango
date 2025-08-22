@@ -92,6 +92,7 @@ impl Block {
 
 #[enum_dispatch]
 pub trait BlockAPI {
+    #[allow(dead_code)]
     fn epoch(&self) -> Epoch;
     fn round(&self) -> Round;
     fn author(&self) -> AuthorityIndex;

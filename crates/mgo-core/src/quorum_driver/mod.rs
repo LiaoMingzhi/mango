@@ -206,7 +206,7 @@ where
     pub async fn submit_transaction(
         &self,
         transaction: Transaction,
-    ) -> MgoResult<Registration<TransactionDigest, QuorumDriverResult>> {
+    ) -> MgoResult<Registration<'_, TransactionDigest, QuorumDriverResult>> {
         let tx_digest = transaction.digest();
         debug!(?tx_digest, "Received transaction execution request.");
         self.metrics.total_requests.inc();
@@ -605,7 +605,7 @@ where
     pub async fn submit_transaction(
         &self,
         transaction: Transaction,
-    ) -> MgoResult<Registration<TransactionDigest, QuorumDriverResult>> {
+    ) -> MgoResult<Registration<'_, TransactionDigest, QuorumDriverResult>> {
         self.quorum_driver.submit_transaction(transaction).await
     }
 

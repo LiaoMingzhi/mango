@@ -10,6 +10,7 @@ use consensus_config::AuthorityIndex;
 use crate::{block::BlockRef, error::ConsensusResult};
 
 /// An `AuthorityNode` holds a `NetworkManager` until shutdown.
+#[allow(dead_code)]
 pub(crate) trait NetworkManager<C, S>
 where
     C: NetworkClient,
@@ -24,6 +25,7 @@ where
 
 /// Network client for communicating with peers.
 #[async_trait]
+#[allow(dead_code)]
 pub(crate) trait NetworkClient: Send + Sync {
     /// Sends a serialized SignedBlock to a peer.
     async fn send_block(&self, peer: AuthorityIndex, block: &Bytes) -> ConsensusResult<()>;
@@ -38,6 +40,7 @@ pub(crate) trait NetworkClient: Send + Sync {
 
 /// Network service for handling requests from peers.
 #[async_trait]
+#[allow(dead_code)]
 pub(crate) trait NetworkService: Send + Sync {
     async fn handle_send_block(&self, peer: AuthorityIndex, block: Bytes) -> ConsensusResult<()>;
     async fn handle_fetch_blocks(

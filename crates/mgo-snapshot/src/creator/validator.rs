@@ -499,6 +499,7 @@ impl SnapshotValidator {
         match bcs::from_bytes::<crate::core_integration::TransactionStoreSnapshot>(transaction_data) {
             Ok(transaction_snapshot) => {
                 let mut tx_count = 0;
+                #[allow(unused_assignments)]
                 let mut effects_count = 0;
                 let mut mismatched_effects = 0;
                 

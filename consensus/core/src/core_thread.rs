@@ -21,10 +21,12 @@ const CORE_THREAD_COMMANDS_CHANNEL_SIZE: usize = 32;
 /// The interface to adhere the implementations of the core thread dispatcher. Also allows the easier mocking during unit tests.
 #[async_trait]
 pub(crate) trait CoreThreadDispatcherInterface: Sync + Send + 'static {
+    #[allow(dead_code)]
     async fn add_blocks(&self, blocks: Vec<VerifiedBlock>) -> Result<Vec<BlockRef>, CoreError>;
 
     async fn force_new_block(&self, round: Round) -> Result<(), CoreError>;
 
+    #[allow(dead_code)]
     async fn get_missing_blocks(&self) -> Result<Vec<HashSet<BlockRef>>, CoreError>;
 }
 

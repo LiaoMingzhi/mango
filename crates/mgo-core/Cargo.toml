@@ -128,3 +128,6 @@ harness = false
 
 [features]
 test-utils = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)', 'cfg(release)'] }

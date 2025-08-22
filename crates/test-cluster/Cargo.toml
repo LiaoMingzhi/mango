@@ -38,3 +38,6 @@ fastcrypto-zkp.workspace = true
 [dev-dependencies]
 mgo-json-rpc-api.workspace = true
 mgo-macros.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

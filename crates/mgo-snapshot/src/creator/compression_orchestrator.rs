@@ -886,7 +886,7 @@ impl Default for HistoricalCompressionPerformance {
 }
 
 #[derive(Debug, Clone)]
-enum CompressionStrategy {
+pub enum CompressionStrategy {
     Basic {
         algorithm: CompressionType,
         level: i32,
@@ -900,7 +900,7 @@ enum CompressionStrategy {
 }
 
 #[derive(Debug, Clone)]
-enum AlgorithmPreference {
+pub enum AlgorithmPreference {
     Lz4,
     Gzip,
     Zstd,

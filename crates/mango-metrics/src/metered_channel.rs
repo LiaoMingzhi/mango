@@ -358,12 +358,12 @@ pub fn channel_with_total<T>(
 
 #[async_trait]
 pub trait WithPermit<T> {
-    async fn with_permit<F: Future + Send>(&self, f: F) -> Option<(Permit<T>, F::Output)>;
+    async fn with_permit<F: Future + Send>(&self, f: F) -> Option<(Permit<'life0, T>, F::Output)>;
 }
 
 #[async_trait]
 impl<T: Send> WithPermit<T> for Sender<T> {
-    async fn with_permit<F: Future + Send>(&self, f: F) -> Option<(Permit<T>, F::Output)> {
+    async fn with_permit<F: Future + Send>(&self, f: F) -> Option<(Permit<'life0, T>, F::Output)> {
         let permit = self.reserve().await.ok()?;
         Some((permit, f.await))
     }

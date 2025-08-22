@@ -1,6 +1,8 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(non_local_definitions)]
+
 pub mod account_universe;
 pub mod config_fuzzer;
 pub mod executor;

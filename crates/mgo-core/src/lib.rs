@@ -2,6 +2,8 @@
 // Copyright (c) MangoNet Labs Ltd.
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)] // Allow dead code during development
+
 extern crate core;
 
 pub mod authority;

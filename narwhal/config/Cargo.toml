@@ -21,6 +21,9 @@ mango-network.workspace = true
 rand.workspace = true
 workspace-hack.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
+
 [dev-dependencies]
 insta.workspace = true
 rand.workspace = true

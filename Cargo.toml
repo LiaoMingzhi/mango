@@ -676,3 +676,6 @@ include_dir = "0.7.3"
 # to it.
 [patch.crates-io.workspace-hack]
 path = "crates/workspace-hack"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

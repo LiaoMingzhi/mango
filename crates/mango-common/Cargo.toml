@@ -11,3 +11,6 @@ tokio.workspace = true
 futures.workspace = true
 parking_lot.workspace = true
 workspace-hack.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

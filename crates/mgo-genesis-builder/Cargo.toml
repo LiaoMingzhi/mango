@@ -29,6 +29,9 @@ mgo-framework-snapshot.workspace = true
 mgo-protocol-config.workspace = true
 mgo-types.workspace = true
 workspace-hack.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
 [target.'cfg(msim)'.dependencies]
 mgo-simulator.workspace = true
 

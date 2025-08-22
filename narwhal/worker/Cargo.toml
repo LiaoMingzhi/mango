@@ -39,6 +39,9 @@ anyhow.workspace = true
 eyre.workspace = true
 workspace-hack.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
+
 [dev-dependencies]
 arc-swap.workspace = true
 rand.workspace = true

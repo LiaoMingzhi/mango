@@ -417,9 +417,11 @@ pub enum ToolCommand {
     },
 }
 
+#[allow(dead_code)]
 trait OptionDebug<T> {
     fn opt_debug(&self, def_str: &str) -> String;
 }
+#[allow(dead_code)]
 trait OptionDisplay<T> {
     fn opt_display(&self, def_str: &str) -> String;
 }
@@ -448,6 +450,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 struct OwnerOutput(Owner);
 
 // grep/awk-friendly output for Owner

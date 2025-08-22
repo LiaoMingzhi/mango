@@ -2639,7 +2639,7 @@ impl AuthorityState {
     pub async fn execution_lock_for_executable_transaction(
         &self,
         transaction: &VerifiedExecutableTransaction,
-    ) -> MgoResult<ExecutionLockReadGuard> {
+    ) -> MgoResult<ExecutionLockReadGuard<'_>> {
         let lock = self.execution_lock.read().await;
         if *lock == transaction.auth_sig().epoch() {
             Ok(lock)
@@ -2651,7 +2651,7 @@ impl AuthorityState {
         }
     }
 
-    pub async fn execution_lock_for_reconfiguration(&self) -> ExecutionLockWriteGuard {
+    pub async fn execution_lock_for_reconfiguration(&self) -> ExecutionLockWriteGuard<'_> {
         self.execution_lock.write().await
     }
 

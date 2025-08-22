@@ -30,6 +30,9 @@ mgo-types.workspace = true
 parking_lot.workspace = true
 workspace-hack.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
+
 [dev-dependencies]
 move-package.workspace = true
 

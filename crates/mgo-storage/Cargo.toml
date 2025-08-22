@@ -55,6 +55,9 @@ move-binary-format.workspace = true
 move-bytecode-utils.workspace = true
 workspace-hack.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
+
 [dev-dependencies]
 anyhow.workspace = true
 criterion.workspace = true

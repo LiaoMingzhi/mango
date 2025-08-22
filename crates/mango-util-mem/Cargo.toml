@@ -22,8 +22,12 @@ parking_lot = { workspace = true, optional = true }
 once_cell.workspace = true
 workspace-hack.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
+
 [features]
 default = ["std", "hashbrown", "smallvec", "estimate-heapsize"]
 std = ["parking_lot"]
 # Full estimate: no call to allocator
 estimate-heapsize = []
+lru = []

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![forbid(unsafe_code)]
+#![allow(non_local_definitions)]
 
 // Error types
 #[macro_use]

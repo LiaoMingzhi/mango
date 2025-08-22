@@ -22,6 +22,7 @@ use super::{CompressionEngine, EncryptionEngine};
 
 /// Local file system storage implementation
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct LocalSnapshotStorage {
     /// Base directory for snapshot storage
     base_path: PathBuf,
@@ -93,6 +94,7 @@ impl LocalSnapshotStorage {
     }
 
     /// Get temporary file path
+    #[allow(dead_code)]
     fn get_temp_path(&self, snapshot_id: &SnapshotId) -> PathBuf {
         self.base_path
             .join("temp")

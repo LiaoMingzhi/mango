@@ -49,7 +49,7 @@ pub trait ObjectStoreListExt: Send + Sync + 'static {
     async fn list_objects(
         &self,
         src: Option<&Path>,
-    ) -> object_store::Result<BoxStream<'_, object_store::Result<ObjectMeta>>>;
+    ) -> object_store::Result<BoxStream<'life0, object_store::Result<ObjectMeta>>>;
 }
 
 macro_rules! as_ref_list_ext_impl {
@@ -59,7 +59,7 @@ macro_rules! as_ref_list_ext_impl {
             async fn list_objects(
                 &self,
                 src: Option<&Path>,
-            ) -> object_store::Result<BoxStream<'_, object_store::Result<ObjectMeta>>> {
+            ) -> object_store::Result<BoxStream<'life0, object_store::Result<ObjectMeta>>> {
                 self.as_ref().list_objects(src).await
             }
         }
@@ -74,7 +74,7 @@ impl ObjectStoreListExt for Arc<DynObjectStore> {
     async fn list_objects(
         &self,
         src: Option<&Path>,
-    ) -> object_store::Result<BoxStream<'_, object_store::Result<ObjectMeta>>> {
+    ) -> object_store::Result<BoxStream<'life0, object_store::Result<ObjectMeta>>> {
         self.list(src).await
     }
 }

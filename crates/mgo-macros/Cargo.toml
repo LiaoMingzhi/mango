@@ -12,3 +12,6 @@ once_cell.workspace = true
 futures.workspace = true
 tracing.workspace = true
 workspace-hack.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)', 'cfg(fail_points)'] }

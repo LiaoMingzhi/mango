@@ -22,3 +22,6 @@ async-trait.workspace = true
 
 prometheus-closure-metric.workspace = true
 workspace-hack.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

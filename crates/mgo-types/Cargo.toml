@@ -65,6 +65,9 @@ proptest.workspace = true
 proptest-derive.workspace = true
 workspace-hack.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }
+
 [dev-dependencies]
 bincode.workspace = true
 criterion.workspace = true

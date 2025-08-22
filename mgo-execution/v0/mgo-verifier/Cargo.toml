@@ -17,3 +17,6 @@ move-bytecode-verifier = { path = "../../../external-crates/move/move-execution/
 mgo-types.workspace = true
 mgo-protocol-config.workspace = true
 workspace-hack.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

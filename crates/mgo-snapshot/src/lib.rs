@@ -6,6 +6,9 @@
 #![deny(unused_imports)]
 #![deny(unused_variables)]
 #![allow(missing_docs)] // TODO: Add comprehensive documentation
+#![allow(dead_code)] // Allow unused code for development
+#![allow(unused_assignments)] // Allow unused variable assignments during development
+#![allow(unused_mut)] // Allow unnecessary mut during development
 
 pub mod types;
 pub mod storage;

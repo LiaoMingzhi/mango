@@ -9,12 +9,15 @@ use async_trait::async_trait;
 pub trait BlockVerifier: Send + Sync + 'static {
     type Error: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static;
     /// Determines if a statement block's content is valid.
+    #[allow(dead_code)]
     async fn verify(&self, _b: &Block) -> Result<(), Self::Error>;
 
+    #[allow(dead_code)]
     async fn verify_all(&self, _b: &[Block]) -> Result<(), Self::Error>;
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct TestBlockVerifier;
 
 #[async_trait]

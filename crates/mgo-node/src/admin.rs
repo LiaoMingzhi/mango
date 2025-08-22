@@ -202,8 +202,12 @@ async fn capabilities(State(state): State<Arc<AppState>>) -> (StatusCode, String
     let capabilities = epoch_store.get_capabilities();
 
     let mut output = String::new();
-    for capability in &capabilities {
-        output.push_str(&format!("{:?}\n", capability));
+    if let Ok(capabilities) = &capabilities {
+        for capability in capabilities {
+            output.push_str(&format!("{:?}\n", capability));
+        }
+    } else {
+        output.push_str("Error getting capabilities\n");
     }
 
     (StatusCode::OK, output)

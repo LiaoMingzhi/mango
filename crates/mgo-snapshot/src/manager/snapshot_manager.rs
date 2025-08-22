@@ -24,6 +24,7 @@ use std::marker::PhantomData;
 use super::{SnapshotMetadataStore, SnapshotRegistry};
 
 /// Main snapshot manager that coordinates all snapshot operations
+#[allow(dead_code)]
 pub struct SnapshotManager {
     /// Configuration
     config: SnapshotConfig,
@@ -300,7 +301,7 @@ impl SnapshotManager {
             registry.register_snapshot(snapshot_info);
 
             // Update metrics
-            self.metrics.record_snapshot_created(&request.snapshot_type);
+            self.metrics.record_snapshot_created(&request.snapshot_type).await;
 
             info!("Successfully created snapshot {}", snapshot_id);
             Ok(snapshot_id.clone())
@@ -553,7 +554,7 @@ impl SnapshotManager {
             registry.unregister_snapshot(&snapshot_id);
 
             // Update metrics
-            self.metrics.record_snapshot_deleted();
+            self.metrics.record_snapshot_deleted().await;
 
             info!("Successfully deleted snapshot {}", snapshot_id);
             Ok(())

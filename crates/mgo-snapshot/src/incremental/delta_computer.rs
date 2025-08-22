@@ -749,7 +749,7 @@ impl DeltaComputer {
         
         // Wait for all collections to complete
         let mut current_objects = HashMap::new();
-        let mut current_transactions = HashMap::new();
+        let current_transactions = HashMap::new();
         
         // Process results
         for handle in handles {
@@ -983,7 +983,7 @@ impl DeltaComputer {
         
         // In a real implementation, this would efficiently deserialize
         // the base snapshot data and extract objects
-        let mut base_objects = HashMap::new();
+        let base_objects = HashMap::new();
         
         // Placeholder implementation
         // Real implementation would parse base_snapshot.data efficiently

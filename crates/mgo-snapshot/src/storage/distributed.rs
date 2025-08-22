@@ -68,6 +68,7 @@ impl DistributedSnapshotStorage {
     }
 
     /// Update backend health status
+    #[allow(dead_code)]
     async fn update_backend_health(&self, backend_index: usize, is_healthy: bool) {
         let mut health = self.backend_health.write().await;
         let backend_id = format!("backend_{}", backend_index);
@@ -446,6 +447,7 @@ impl Default for ConsistencyLevel {
 
 /// Backend health status
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct BackendHealth {
     is_healthy: bool,
     last_check: chrono::DateTime<chrono::Utc>,
@@ -454,6 +456,7 @@ struct BackendHealth {
 
 impl BackendHealth {
     /// Check if backend should be considered healthy
+    #[allow(dead_code)]
     fn is_healthy(&self) -> bool {
         self.is_healthy && self.error_count < 5
     }
