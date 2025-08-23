@@ -241,8 +241,8 @@ async fn restore_snapshot(
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use std::path::Path;
     
-    // Step 1: Validate snapshot exists
-    let snapshots_dir = Path::new("./snapshots");
+    // Step 1: Validate snapshot exists (using mango-cluster path)
+    let snapshots_dir = Path::new("../mango-cluster/snapshots");
     let snapshot_file = snapshots_dir.join(format!("{}.json", snapshot_id));
     
     if !snapshot_file.exists() {
@@ -284,7 +284,7 @@ async fn restore_snapshot(
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let backup_dir = format!("./snapshots/backup_{}", backup_timestamp);
+        let backup_dir = format!("../mango-cluster/snapshots/backup_{}", backup_timestamp);
         
         if let Err(e) = fs::create_dir_all(&backup_dir) {
             if !json {
@@ -415,7 +415,7 @@ async fn restore_snapshot(
                                   snapshot_id, target_epoch, 
                                   chrono::Utc::now().to_rfc3339(),
                                   validation_level);
-        if let Err(e) = fs::write("./snapshot_restore_state.txt", state_marker) {
+        if let Err(e) = fs::write("../mango-cluster/snapshot_restore_state.txt", state_marker) {
             if !json {
                 println!("⚠️  Warning: Failed to create state marker: {}", e);
             }
@@ -436,9 +436,9 @@ async fn restore_snapshot(
             println!("🎯 Target Epoch: {}", target_epoch);
             println!("🔄 Retries Used: {}", retry_count - 1);
             println!("📁 Data Structure: Created epoch directories 0-{}", target_epoch);
-            println!("💾 State File: ./snapshot_restore_state.txt");
+            println!("💾 State File: ../mango-cluster/snapshot_restore_state.txt");
             if backup_current {
-                println!("💾 Backup Available: ./snapshots/backup_*");
+                println!("💾 Backup Available: ../mango-cluster/snapshots/backup_*");
             }
             println!("🎉 Node can now be restarted to use restored state!");
             println!("💡 Tip: Use 'mgo snapshot verify --all' to verify restoration");
@@ -467,8 +467,8 @@ async fn run_snapshot_command(
     use std::io::Write;
     use chrono::Utc;
     
-    // Create snapshots directory if it doesn't exist
-    let snapshots_dir = std::path::Path::new("./snapshots");
+    // Create snapshots directory if it doesn't exist (using mango-cluster path)
+    let snapshots_dir = std::path::Path::new("../mango-cluster/snapshots");
     if !snapshots_dir.exists() {
         fs::create_dir_all(snapshots_dir)?;
     }
