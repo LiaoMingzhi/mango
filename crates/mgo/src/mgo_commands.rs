@@ -990,7 +990,7 @@ async fn perform_real_snapshot_restoration(
         if let Some(ref subdir) = original_subdir {
             let backup_info = format!("original_db_subdir: {}\ntarget_epoch: {}\nrestore_timestamp: {}\n", 
                 subdir, target_epoch, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
-            if let Err(e) = std::fs::write("../mango-cluster/snapshot_restore_state.txt", backup_info) {
+            if let Err(e) = std::fs::write("../mango-cluster/node_db_backup.txt", backup_info) {
                 if !json {
                     println!("⚠️  WARNING: Could not save backup state: {}", e);
                 }
@@ -1128,7 +1128,7 @@ async fn perform_production_database_restoration(
     // Step 1: Dynamically detect the correct database path for this node
     // CRITICAL: We need to check for existing node-specific directory BEFORE any cleanup
     // First check if we have a backup state that tells us the original path
-    let backup_state_path = std::path::Path::new("../mango-cluster/snapshot_restore_state.txt");
+    let backup_state_path = std::path::Path::new("../mango-cluster/node_db_backup.txt");
     let mut original_node_db_subdir = None;
     
     if backup_state_path.exists() {
