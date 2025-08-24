@@ -1091,11 +1091,49 @@ async fn perform_production_database_restoration(
         println!("📊 Target Epoch: {}", target_epoch);
     }
     
-    // Step 1: Detect correct database path from config file or create it
+    // Step 1: Dynamically detect the correct database path for this node
     // Node uses config.db_path().join("store"), where db_path() adds "live"
-    // So the actual path is: "./authorities_db/a3b5d168f135/live/store"
-    let config_specified_path = "./authorities_db/a3b5d168f135/live/store"; // Correct path matching node
-    let db_path = Path::new(config_specified_path);
+    // Find the node-specific subdirectory (12-char hash) under authorities_db
+    let authorities_db_dir = std::path::Path::new("./authorities_db");
+    let config_specified_path = if authorities_db_dir.exists() {
+        // Find the first subdirectory (node-specific hash)
+        match std::fs::read_dir(authorities_db_dir) {
+            Ok(entries) => {
+                let mut found_path = None;
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.is_dir() && path.file_name().unwrap().to_string_lossy().len() == 12 {
+                            let db_path = format!("./authorities_db/{}/live/store", path.file_name().unwrap().to_string_lossy());
+                            if !json {
+                                println!("🔍 AUTO-DETECTED node database path: {}", db_path);
+                            }
+                            found_path = Some(db_path);
+                            break;
+                        }
+                    }
+                }
+                found_path.unwrap_or_else(|| {
+                    if !json {
+                        println!("❌ WARNING: No node-specific database subdirectory found");
+                    }
+                    "./authorities_db/default/live/store".to_string() // fallback
+                })
+            }
+            Err(_) => {
+                if !json {
+                    println!("❌ WARNING: Cannot read authorities_db directory");
+                }
+                "./authorities_db/default/live/store".to_string() // fallback
+            }
+        }
+    } else {
+        if !json {
+            println!("❌ WARNING: authorities_db directory not found");
+        }
+        "./authorities_db/default/live/store".to_string() // fallback
+    };
+    let db_path = Path::new(&config_specified_path);
     
     // Ensure the database directory exists
     if let Some(parent) = db_path.parent() {
