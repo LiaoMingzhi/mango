@@ -36,6 +36,7 @@ reqwest.workspace = true
 im.workspace = true
 
 mgo-config.workspace = true
+mgo-core.workspace = true
 mgo-execution = { path = "../../mgo-execution" }
 mgo-swarm-config.workspace = true
 mgo-genesis-builder.workspace = true

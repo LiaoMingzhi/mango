@@ -6638,6 +6638,7 @@ dependencies = [
  "jemalloc-ctl",
  "json_to_table",
  "mgo-config",
+ "mgo-core",
  "mgo-execution",
  "mgo-genesis-builder",
  "mgo-json",
