@@ -74,19 +74,24 @@ fn main() {
     config.supported_protocol_versions = Some(SupportedProtocolVersions::SYSTEM_DEFAULT);
 
     // PRODUCTION RESTORE: Check for snapshot restore configuration
-    check_and_apply_restore_configuration(&mut config, &args);
+    let restore_config_applied = check_and_apply_restore_configuration(&mut config, &args);
 
     // match run_with_range args
     // this means that we always modify the config used to start the node
     // for run_with_range. i.e if this is set in the config, it is ignored. only the cli args
     // enable/disable run_with_range
-    match (args.run_with_range_epoch, args.run_with_range_checkpoint) {
-        (None, Some(checkpoint)) => {
-            config.run_with_range = Some(RunWithRange::Checkpoint(checkpoint))
-        }
-        (Some(epoch), None) => config.run_with_range = Some(RunWithRange::Epoch(epoch)),
-        _ => config.run_with_range = None,
-    };
+    // CRITICAL: Don't override restore configuration if it was applied
+    if !restore_config_applied {
+        match (args.run_with_range_epoch, args.run_with_range_checkpoint) {
+            (None, Some(checkpoint)) => {
+                config.run_with_range = Some(RunWithRange::Checkpoint(checkpoint))
+            }
+            (Some(epoch), None) => config.run_with_range = Some(RunWithRange::Epoch(epoch)),
+            _ => config.run_with_range = None,
+        };
+    } else {
+        info!("⚠️  Preserving PRODUCTION RESTORE configuration, ignoring CLI run_with_range arguments");
+    }
 
     let runtimes = MgoRuntimes::new(&config);
     let metrics_rt = runtimes.metrics.enter();
@@ -233,10 +238,14 @@ async fn wait_termination(mut shutdown_rx: tokio::sync::broadcast::Receiver<()>)
 }
 
 /// Check for snapshot restore configuration and apply epoch override if needed
-fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) {
+/// Returns true if restore configuration was applied, false otherwise
+fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) -> bool {
     use std::path::Path;
     use std::fs;
     use mgo_config::node::RunWithRange;
+    
+    // Track whether restore configuration was successfully applied
+    let mut restore_applied = false;
     
     // Check for production restore configuration
     let restore_config_path = Path::new("mgo_node_restore.toml");
@@ -259,6 +268,7 @@ fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) 
                         // Override the run_with_range to force starting from specific epoch
                         // This takes precedence over command line arguments
                         config.run_with_range = Some(RunWithRange::Epoch(target_epoch));
+                        restore_applied = true;  // Mark as successfully applied
                         
                         info!("✅ PRODUCTION RESTORE: Node configured to start from epoch {}", target_epoch);
                         info!("🚀 Node will use production-grade snapshot restoration settings");
@@ -303,6 +313,9 @@ fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) 
         // No restore configuration found, proceed with normal startup
         info!("📋 No snapshot restore configuration detected, using normal startup");
     }
+    
+    // Return whether restore configuration was applied
+    restore_applied
 }
 
 /// Extract target epoch from TOML content
