@@ -104,6 +104,10 @@ pub enum SnapshotError {
     #[error("State application failed for component {component}: {details}")]
     StateApplication { component: String, details: String },
 
+    /// State recovery errors (mgo-core integration)
+    #[error("State recovery failed: {0}")]
+    StateRecovery(String),
+
     /// State validation errors
     #[error("State validation failed for component {component}: {details}")]
     StateValidation { component: String, details: String },
