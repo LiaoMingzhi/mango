@@ -1092,7 +1092,8 @@ async fn perform_production_database_restoration(
     }
     
     // Step 1: Detect correct database path from config file or create it
-    let config_specified_path = "./authorities_db/a3b5d168f135"; // Default node path
+    // Node uses config.db_path().join("store"), so we need to match that
+    let config_specified_path = "./authorities_db/a3b5d168f135/store"; // Correct path matching node
     let db_path = Path::new(config_specified_path);
     
     // Ensure the database directory exists
