@@ -90,7 +90,7 @@ fn main() {
             _ => config.run_with_range = None,
         };
     } else {
-        info!("⚠️  Preserving PRODUCTION RESTORE configuration, ignoring CLI run_with_range arguments");
+        info!("🔒 PROTECTION: Preserving database-driven epoch recovery, ignoring CLI run_with_range arguments");
     }
 
     let runtimes = MgoRuntimes::new(&config);
@@ -112,9 +112,8 @@ fn main() {
     if restore_config_applied {
         info!("🎉 PRODUCTION RESTORE: Snapshot restore configuration successfully applied!");
         info!("🔧 RESTORED CONFIG: Node configured for production-grade epoch recovery");
-        if let Some(RunWithRange::Epoch(epoch)) = config.run_with_range {
-            info!("📊 TARGET EPOCH: Node will start from epoch {}", epoch);
-        }
+        info!("💾 DATABASE RECOVERY: Node will read recovery_epoch_at_restart from database");
+        info!("🚀 STARTUP MODE: Pure database-driven epoch recovery (no CLI override)");
     }
     info!(
         "Supported protocol versions: {:?}",
@@ -274,13 +273,13 @@ fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) 
                         info!("🎯 PRODUCTION RESTORE: Setting node to start from epoch {}", target_epoch);
                         info!("💾 Database has been modified for epoch {} recovery", target_epoch);
                         
-                        // Override the run_with_range to force starting from specific epoch
-                        // This takes precedence over command line arguments
-                        config.run_with_range = Some(RunWithRange::Epoch(target_epoch));
+                        // DO NOT set run_with_range - let the node use database recovery_epoch_at_restart
+                        // The database has been modified with the correct epoch in PHASE 2
+                        // config.run_with_range = Some(RunWithRange::Epoch(target_epoch)); // REMOVED - this interferes with database recovery
                         restore_applied = true;  // Mark as successfully applied
                         
-                        info!("✅ PRODUCTION RESTORE: Node configured to start from epoch {}", target_epoch);
-                        info!("🚀 Node will use production-grade snapshot restoration settings");
+                        info!("✅ PRODUCTION RESTORE: Database prepared for epoch {} recovery", target_epoch);
+                        info!("🚀 STARTUP: Node will use database-driven epoch recovery (no CLI override)");
                     } else {
                         error!("⚠️  Failed to extract target epoch from mgo_node_restore.toml");
                     }
@@ -316,8 +315,8 @@ fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) 
             }
         }
         
-        info!("🎉 PRODUCTION RESTORE: Configuration applied successfully");
-        info!("🔧 Node is ready for production-grade snapshot restoration startup");
+        info!("🎉 PRODUCTION RESTORE: Database recovery configuration applied successfully");
+        info!("🔧 Node is ready for database-driven epoch recovery startup");
     } else {
         // No restore configuration found, proceed with normal startup
         info!("📋 No snapshot restore configuration detected, using normal startup");
