@@ -6682,6 +6682,7 @@ dependencies = [
  "test-cluster",
  "tokio",
  "tracing",
+ "typed-store",
  "unescape",
  "workspace-hack",
 ]

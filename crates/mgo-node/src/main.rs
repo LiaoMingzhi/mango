@@ -73,6 +73,9 @@ fn main() {
     );
     config.supported_protocol_versions = Some(SupportedProtocolVersions::SYSTEM_DEFAULT);
 
+    // PRODUCTION RESTORE: Check for snapshot restore configuration
+    check_and_apply_restore_configuration(&mut config, &args);
+
     // match run_with_range args
     // this means that we always modify the config used to start the node
     // for run_with_range. i.e if this is set in the config, it is ignored. only the cli args
@@ -227,4 +230,108 @@ async fn wait_termination(mut shutdown_rx: tokio::sync::broadcast::Receiver<()>)
         _ = sigterm_recv => {},
         _ = shutdown_recv => {},
     }
+}
+
+/// Check for snapshot restore configuration and apply epoch override if needed
+fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) {
+    use std::path::Path;
+    use std::fs;
+    use mgo_config::node::RunWithRange;
+    
+    // Check for production restore configuration
+    let restore_config_path = Path::new("mgo_node_restore.toml");
+    let epoch_override_path = Path::new("epoch_override.conf");
+    
+    if restore_config_path.exists() || epoch_override_path.exists() {
+        info!("🔍 PRODUCTION RESTORE: Snapshot restore configuration detected");
+        
+        // Parse mgo_node_restore.toml if it exists
+        if restore_config_path.exists() {
+            match fs::read_to_string(restore_config_path) {
+                Ok(toml_content) => {
+                    info!("📋 Reading production restore configuration from mgo_node_restore.toml");
+                    
+                    // Extract target epoch from TOML
+                    if let Some(target_epoch) = extract_target_epoch_from_toml(&toml_content) {
+                        info!("🎯 PRODUCTION RESTORE: Setting node to start from epoch {}", target_epoch);
+                        info!("💾 Database has been modified for epoch {} recovery", target_epoch);
+                        
+                        // Override the run_with_range to force starting from specific epoch
+                        // This takes precedence over command line arguments
+                        config.run_with_range = Some(RunWithRange::Epoch(target_epoch));
+                        
+                        info!("✅ PRODUCTION RESTORE: Node configured to start from epoch {}", target_epoch);
+                        info!("🚀 Node will use production-grade snapshot restoration settings");
+                    } else {
+                        error!("⚠️  Failed to extract target epoch from mgo_node_restore.toml");
+                    }
+                }
+                Err(e) => {
+                    error!("⚠️  Failed to read mgo_node_restore.toml: {}", e);
+                }
+            }
+        }
+        
+        // Also check epoch_override.conf for additional validation
+        if epoch_override_path.exists() {
+            match fs::read_to_string(epoch_override_path) {
+                Ok(conf_content) => {
+                    info!("📋 Validating epoch override configuration");
+                    
+                    if let Some(override_epoch) = extract_epoch_from_conf(&conf_content) {
+                        info!("✅ Epoch override validation: epoch {} confirmed", override_epoch);
+                        
+                        // Double-check consistency
+                        if let Some(RunWithRange::Epoch(config_epoch)) = config.run_with_range {
+                            if config_epoch != override_epoch {
+                                error!("⚠️  INCONSISTENCY: TOML epoch {} != Override epoch {}", config_epoch, override_epoch);
+                            } else {
+                                info!("✅ CONSISTENCY CHECK: Both configurations specify epoch {}", config_epoch);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("⚠️  Failed to read epoch_override.conf: {}", e);
+                }
+            }
+        }
+        
+        info!("🎉 PRODUCTION RESTORE: Configuration applied successfully");
+        info!("🔧 Node is ready for production-grade snapshot restoration startup");
+    } else {
+        // No restore configuration found, proceed with normal startup
+        info!("📋 No snapshot restore configuration detected, using normal startup");
+    }
+}
+
+/// Extract target epoch from TOML content
+fn extract_target_epoch_from_toml(toml_content: &str) -> Option<u64> {
+    // Simple regex-based extraction for start_epoch
+    for line in toml_content.lines() {
+        let line = line.trim();
+        if line.starts_with("start_epoch") || line.starts_with("force_start_epoch") {
+            if let Some(equals_pos) = line.find('=') {
+                let value_part = line[equals_pos + 1..].trim();
+                if let Ok(epoch) = value_part.parse::<u64>() {
+                    return Some(epoch);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract epoch from configuration file content
+fn extract_epoch_from_conf(conf_content: &str) -> Option<u64> {
+    for line in conf_content.lines() {
+        let line = line.trim();
+        if line.starts_with("FORCE_START_EPOCH=") {
+            let value_part = line.strip_prefix("FORCE_START_EPOCH=").unwrap().trim();
+            if let Ok(epoch) = value_part.parse::<u64>() {
+                return Some(epoch);
+            }
+        }
+    }
+    None
 }

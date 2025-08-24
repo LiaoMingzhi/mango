@@ -66,6 +66,7 @@ tempfile.workspace = true
 telemetry-subscribers.workspace = true
 mgo-snapshot.workspace = true
 chrono.workspace = true
+typed-store.workspace = true
 
 move-core-types.workspace = true
 move-package.workspace = true
