@@ -140,26 +140,42 @@ impl AuthorityStore {
         enable_epoch_mgo_conservation_check: bool,
         registry: &Registry,
     ) -> MgoResult<Arc<Self>> {
-        let epoch_start_configuration = if perpetual_tables.database_is_empty()? {
-            info!("Creating new epoch start config from genesis");
+        info!("🔍 **DATABASE DIAGNOSTICS: Checking epoch configuration**");
+        let is_empty = perpetual_tables.database_is_empty()?;
+        info!("📊 Database empty status: {}", if is_empty { "✅ EMPTY (new database)" } else { "📋 HAS DATA (existing database)" });
+        
+        let epoch_start_configuration = if is_empty {
+            info!("🔧 Creating new epoch start config from genesis");
+            info!("📊 Genesis epoch: {}", genesis.mgo_system_object().into_epoch_start_state().epoch());
 
             let epoch_start_configuration = EpochStartConfiguration::new(
                 genesis.mgo_system_object().into_epoch_start_state(),
                 *genesis.checkpoint().digest(),
                 &genesis.objects(),
             )?;
+            info!("💾 Setting new epoch configuration in database...");
             perpetual_tables
                 .set_epoch_start_configuration(&epoch_start_configuration)
                 .await?;
+            info!("✅ New epoch configuration set in database");
             epoch_start_configuration
         } else {
-            info!("Loading epoch start config from DB");
-            perpetual_tables
+            info!("🔍 Loading epoch start config from existing database");
+            let config = perpetual_tables
                 .epoch_start_configuration
                 .get(&())?
-                .expect("Epoch start configuration must be set in non-empty DB")
+                .expect("Epoch start configuration must be set in non-empty DB");
+            info!("✅ Loaded existing epoch configuration from database");
+            info!("📊 Loaded config epoch: {}", config.epoch_start_state().epoch());
+            config
         };
+        
+        info!("🔍 Getting recovery epoch from database...");
         let cur_epoch = perpetual_tables.get_recovery_epoch_at_restart()?;
+        info!("📊 **CRITICAL DATABASE VALUES:**");
+        info!("   - Epoch start config epoch: {}", epoch_start_configuration.epoch_start_state().epoch());
+        info!("   - Recovery epoch at restart: {}", cur_epoch);
+        info!("   - Database status: {}", if is_empty { "NEW" } else { "EXISTING" });
         info!("Epoch start config: {:?}", epoch_start_configuration);
         info!("Cur epoch: {:?}", cur_epoch);
         let this = Self::open_inner(
@@ -215,6 +231,9 @@ impl AuthorityStore {
         enable_epoch_mgo_conservation_check: bool,
         registry: &Registry,
     ) -> MgoResult<Arc<Self>> {
+        info!("🔧 **AUTHORITY STORE INITIALIZATION**");
+        info!("📊 Genesis epoch: {}", genesis.mgo_system_object().into_epoch_start_state().epoch());
+        
         let store = Arc::new(Self {
             mutex_table: MutexTable::new(NUM_SHARDS),
             perpetual_tables,
@@ -225,11 +244,17 @@ impl AuthorityStore {
             enable_epoch_mgo_conservation_check,
             metrics: AuthorityStoreMetrics::new(registry),
         });
-        // Only initialize an empty database.
-        if store
+        
+        let is_empty = store
             .database_is_empty()
-            .expect("Database read should not fail at init.")
-        {
+            .expect("Database read should not fail at init.");
+        
+        info!("📊 **STORE INITIALIZATION STATUS:**");
+        info!("   - Database empty: {}", if is_empty { "✅ YES (will init from genesis)" } else { "❌ NO (existing data)" });
+        
+        // Only initialize an empty database.
+        if is_empty {
+            info!("🔧 Initializing empty database with genesis data...");
             store
                 .bulk_insert_genesis_objects(genesis.objects())
                 .await

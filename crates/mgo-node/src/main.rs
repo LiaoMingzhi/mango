@@ -259,11 +259,50 @@ fn check_and_apply_restore_configuration(config: &mut NodeConfig, _args: &Args) 
     let restore_config_path = Path::new("mgo_node_restore.toml");
     let epoch_override_path = Path::new("epoch_override.conf");
     
+    // Add detailed startup diagnostics
+    info!("🔍 **STARTUP DIAGNOSTICS: Checking restoration configuration files**");
+    info!("📂 Current working directory: {:?}", std::env::current_dir().unwrap_or_default());
+    info!("📁 Checking for restore config files:");
+    info!("   - mgo_node_restore.toml: {}", if restore_config_path.exists() { "✅ EXISTS" } else { "❌ NOT FOUND" });
+    info!("   - epoch_override.conf: {}", if epoch_override_path.exists() { "✅ EXISTS" } else { "❌ NOT FOUND" });
+    
+    // Check database directories
+    let db_path = Path::new("authorities_db");
+    if db_path.exists() {
+        info!("📂 Database directory status:");
+        info!("   - authorities_db: ✅ EXISTS");
+        if let Ok(entries) = std::fs::read_dir(db_path) {
+            for entry in entries.take(3) {
+                if let Ok(entry) = entry {
+                    info!("     - {}", entry.file_name().to_string_lossy());
+                }
+            }
+        }
+    } else {
+        info!("📂 Database directory: ❌ authorities_db NOT FOUND");
+    }
+    
+    let consensus_path = Path::new("consensus_db");
+    if consensus_path.exists() {
+        info!("📂 Consensus directory status:");
+        info!("   - consensus_db: ✅ EXISTS");
+        if let Ok(entries) = std::fs::read_dir(consensus_path) {
+            let epochs: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+            info!("     - Epochs: {:?}", epochs);
+        }
+    } else {
+        info!("📂 Consensus directory: ❌ consensus_db NOT FOUND");
+    }
+    
     if restore_config_path.exists() || epoch_override_path.exists() {
         info!("🔍 PRODUCTION RESTORE: Snapshot restore configuration detected");
         
         // Parse mgo_node_restore.toml if it exists
         if restore_config_path.exists() {
+            info!("📄 TOML file size: {} bytes", restore_config_path.metadata().map(|m| m.len()).unwrap_or(0));
             match fs::read_to_string(restore_config_path) {
                 Ok(toml_content) => {
                     info!("📋 Reading production restore configuration from mgo_node_restore.toml");

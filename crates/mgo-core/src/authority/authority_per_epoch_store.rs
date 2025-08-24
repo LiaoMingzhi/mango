@@ -695,8 +695,18 @@ impl AuthorityPerEpochStore {
         expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
         chain_identifier: ChainIdentifier,
     ) -> Arc<Self> {
+        info!("🔧 **CREATING PER-EPOCH STORE**");
+        info!("📊 Committee epoch: {}", committee.epoch);
+        info!("📊 Epoch start config epoch: {}", epoch_start_configuration.epoch_start_state().epoch());
+        info!("📂 Database path: {:?}", parent_path);
+        
         let current_time = Instant::now();
         let epoch_id = committee.epoch;
+        
+        info!("📊 **EPOCH STORE CREATION VALUES:**");
+        info!("   - Committee epoch: {}", epoch_id);
+        info!("   - Config epoch: {}", epoch_start_configuration.epoch_start_state().epoch());
+        info!("   - Authority name: {:?}", name);
 
         let tables = AuthorityEpochTables::open(epoch_id, parent_path, db_options.clone());
         let end_of_publish =
