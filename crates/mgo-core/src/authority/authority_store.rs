@@ -144,7 +144,24 @@ impl AuthorityStore {
         let is_empty = perpetual_tables.database_is_empty()?;
         info!("📊 Database empty status: {}", if is_empty { "✅ EMPTY (new database)" } else { "📋 HAS DATA (existing database)" });
         
-        let epoch_start_configuration = if is_empty {
+        // Check for snapshot restore configuration first
+        let existing_config = perpetual_tables.epoch_start_configuration.get(&())?;
+        let has_restore_config = std::path::Path::new("mgo_node_restore.toml").exists();
+        
+        let epoch_start_configuration = if existing_config.is_some() && !has_restore_config {
+            info!("🔍 Loading epoch start config from existing database (normal operation)");
+            let config = existing_config.unwrap();
+            info!("✅ Loaded existing epoch configuration from database");
+            info!("📊 Loaded config epoch: {}", config.epoch_start_state().epoch());
+            config
+        } else if existing_config.is_some() && has_restore_config {
+            info!("🔧 SNAPSHOT RESTORE DETECTED: Using restored epoch configuration");
+            info!("📊 Objects table empty but restore config exists - this is expected for epoch rollback");
+            let config = existing_config.unwrap();
+            info!("✅ Using snapshot-restored epoch configuration");
+            info!("📊 Restored config epoch: {}", config.epoch_start_state().epoch());
+            config
+        } else if is_empty {
             info!("🔧 Creating new epoch start config from genesis");
             info!("📊 Genesis epoch: {}", genesis.mgo_system_object().into_epoch_start_state().epoch());
 
