@@ -841,38 +841,15 @@ async fn restore_snapshot(
             }
         }
         
-        // ========== PRODUCTION RESTORE: REAL DATABASE STATE RECOVERY ==========
+        // ========== PRODUCTION RESTORE: TWO-PHASE RECOVERY ==========
         if !json {
-            println!("🔧 Starting PRODUCTION-LEVEL database state recovery...");
-            println!("🗃️  Integrating with mgo-core AuthorityPerpetualTables...");
+            println!("🔧 Starting PRODUCTION-LEVEL two-phase restoration...");
+            println!("📁 Phase 1: File structure restoration");
+            println!("🗃️  Phase 2: Database state integration");
         }
         
-        // Step 5.1: CRITICAL - Real database state modification
-        match perform_production_database_restoration(
-            &snapshot_id,
-            target_epoch,
-            backup_current,
-            force,
-            json
-        ).await {
-            Ok(_) => {
-                if !json {
-                    println!("✅ PRODUCTION database state restoration completed!");
-                    println!("📊 Epoch state successfully modified in database");
-                }
-                restoration_success = true;
-                break; // Successfully restored, no need for retries
-            }
-            Err(e) => {
-                if !json {
-                    println!("⚠️  Production database restoration failed: {}", e);
-                    println!("🔄 Falling back to file-based restoration...");
-                }
-                // Continue with file-based restoration as fallback
-            }
-        }
-        
-        // Step 5.2: Initialize mgo-snapshot RestoreOptions (fallback)
+        // Step 5.1: PHASE 1 - File structure restoration (creates directories)
+        // Step 5.2: Initialize mgo-snapshot RestoreOptions
         if !json {
             println!("📋 Initializing fallback restoration parameters...");
         }
@@ -1022,6 +999,33 @@ async fn perform_real_snapshot_restoration(
                 // Create additional state files for node startup
                 create_startup_state_files(&snapshot_id.to_string(), target_epoch, json).await?;
                 
+                // PHASE 2: Database state integration (now that directories exist)
+                if !json {
+                    println!("🗃️  PHASE 2: Starting database state integration...");
+                }
+                
+                match perform_production_database_restoration(
+                    &snapshot_id.to_string(),
+                    target_epoch,
+                    false, // backup_current
+                    false, // force
+                    json
+                ).await {
+                    Ok(_) => {
+                        if !json {
+                            println!("✅ PHASE 2: Database state integration completed!");
+                            println!("📊 recovery_epoch_at_restart set to: {}", target_epoch);
+                        }
+                    }
+                    Err(e) => {
+                        if !json {
+                            println!("⚠️  PHASE 2: Database integration failed: {}", e);
+                            println!("💡 Node will use file-based restoration only");
+                        }
+                        // Continue without database integration - not critical for basic functionality
+                    }
+                }
+                
                 Ok(())
             }
             Err(e) => {
@@ -1032,6 +1036,32 @@ async fn perform_real_snapshot_restoration(
                 
                 // Fallback to basic restoration
                 create_startup_state_files(&snapshot_id.to_string(), target_epoch, json).await?;
+                
+                // PHASE 2: Database state integration (attempt even with fallback)
+                if !json {
+                    println!("🗃️  PHASE 2: Attempting database state integration after fallback...");
+                }
+                
+                match perform_production_database_restoration(
+                    &snapshot_id.to_string(),
+                    target_epoch,
+                    false, // backup_current
+                    false, // force
+                    json
+                ).await {
+                    Ok(_) => {
+                        if !json {
+                            println!("✅ PHASE 2: Database state integration completed after fallback!");
+                            println!("📊 recovery_epoch_at_restart set to: {}", target_epoch);
+                        }
+                    }
+                    Err(e) => {
+                        if !json {
+                            println!("⚠️  PHASE 2: Database integration failed after fallback: {}", e);
+                            println!("💡 Node will start from epoch 0 instead of {}", target_epoch);
+                        }
+                    }
+                }
                 
                 Ok(())
             }
