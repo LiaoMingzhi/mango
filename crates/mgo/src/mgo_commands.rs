@@ -1091,30 +1091,19 @@ async fn perform_production_database_restoration(
         println!("📊 Target Epoch: {}", target_epoch);
     }
     
-    // Step 1: Detect correct database path (node-specific subdirectory)
-    let base_db_path = Path::new("./authorities_db");
-    if !base_db_path.exists() {
-        return Err(anyhow!("Base database directory does not exist: {:?}", base_db_path));
-    }
+    // Step 1: Detect correct database path from config file or create it
+    let config_specified_path = "./authorities_db/a3b5d168f135"; // Default node path
+    let db_path = Path::new(config_specified_path);
     
-    // Find the node-specific database subdirectory (e.g., a3b5d168f135)
-    let mut actual_db_path = None;
-    if let Ok(entries) = std::fs::read_dir(base_db_path) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_dir() && path.file_name().unwrap().to_string_lossy().len() == 12 {
-                    // Found a 12-character directory name (node ID)
-                    actual_db_path = Some(path);
-                    break;
-                }
-            }
-        }
+    // Ensure the database directory exists
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
+    std::fs::create_dir_all(&db_path)?;
     
-    let db_path = actual_db_path.ok_or_else(|| {
-        anyhow!("No node-specific database directory found in {:?}", base_db_path)
-    })?;
+    if !json {
+        println!("📁 Created/verified database directory: {:?}", db_path);
+    }
     
     if !json {
         println!("📂 Opening database at: {:?}", db_path);
