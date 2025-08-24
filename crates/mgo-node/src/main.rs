@@ -107,6 +107,15 @@ fn main() {
     drop(metrics_rt);
 
     info!("Mgo Node version: {VERSION}");
+    
+    // Log restore configuration status after logging is initialized
+    if restore_config_applied {
+        info!("🎉 PRODUCTION RESTORE: Snapshot restore configuration successfully applied!");
+        info!("🔧 RESTORED CONFIG: Node configured for production-grade epoch recovery");
+        if let Some(RunWithRange::Epoch(epoch)) = config.run_with_range {
+            info!("📊 TARGET EPOCH: Node will start from epoch {}", epoch);
+        }
+    }
     info!(
         "Supported protocol versions: {:?}",
         config.supported_protocol_versions
