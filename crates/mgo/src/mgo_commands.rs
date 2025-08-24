@@ -965,6 +965,40 @@ async fn perform_real_snapshot_restoration(
             println!("🔧 Initializing mgo-snapshot restoration engine...");
         }
         
+        // CRITICAL: Save original database subdirectory BEFORE any cleanup
+        let authorities_db_dir = std::path::Path::new("./authorities_db");
+        let mut original_subdir = None;
+        
+        if authorities_db_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(authorities_db_dir) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.is_dir() && path.file_name().unwrap().to_string_lossy().len() == 12 {
+                            original_subdir = Some(path.file_name().unwrap().to_string_lossy().to_string());
+                            if !json {
+                                println!("🔍 DETECTED original node database subdirectory: {}", original_subdir.as_ref().unwrap());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Save this information for later use in database restoration
+        if let Some(ref subdir) = original_subdir {
+            let backup_info = format!("original_db_subdir: {}\ntarget_epoch: {}\nrestore_timestamp: {}\n", 
+                subdir, target_epoch, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+            if let Err(e) = std::fs::write("../mango-cluster/snapshot_restore_state.txt", backup_info) {
+                if !json {
+                    println!("⚠️  WARNING: Could not save backup state: {}", e);
+                }
+            } else if !json {
+                println!("💾 SAVED original database path information for restoration");
+            }
+        }
+        
         // Use real mgo-core state recovery APIs
         if !json {
             println!("🔧 Initializing mgo-core state recovery...");
@@ -1092,10 +1126,37 @@ async fn perform_production_database_restoration(
     }
     
     // Step 1: Dynamically detect the correct database path for this node
-    // Node uses config.db_path().join("store"), where db_path() adds "live"
-    // Find the node-specific subdirectory (12-char hash) under authorities_db
+    // CRITICAL: We need to check for existing node-specific directory BEFORE any cleanup
+    // First check if we have a backup state that tells us the original path
+    let backup_state_path = std::path::Path::new("../mango-cluster/snapshot_restore_state.txt");
+    let mut original_node_db_subdir = None;
+    
+    if backup_state_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(backup_state_path) {
+            for line in content.lines() {
+                if line.starts_with("original_db_subdir:") {
+                    if let Some(subdir) = line.split(':').nth(1) {
+                        original_node_db_subdir = Some(subdir.trim().to_string());
+                        if !json {
+                            println!("🔍 FOUND original database subdirectory from backup: {}", subdir.trim());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // If no backup info, try to detect from current directory structure
     let authorities_db_dir = std::path::Path::new("./authorities_db");
-    let config_specified_path = if authorities_db_dir.exists() {
+    let config_specified_path = if let Some(subdir) = original_node_db_subdir {
+        // Use the backed up original subdirectory name
+        let db_path = format!("./authorities_db/{}/live/store", subdir);
+        if !json {
+            println!("🔍 USING backed up node database path: {}", db_path);
+        }
+        db_path
+    } else if authorities_db_dir.exists() {
         // Find the first subdirectory (node-specific hash)
         match std::fs::read_dir(authorities_db_dir) {
             Ok(entries) => {
