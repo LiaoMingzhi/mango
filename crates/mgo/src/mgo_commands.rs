@@ -1187,11 +1187,8 @@ async fn create_verified_checkpoint_from_snapshot(
     // Create a minimal envelope for VerifiedCheckpoint
     use mgo_types::message_envelope::Envelope;
     use mgo_types::crypto::{AuthorityQuorumSignInfo, AggregateAuthoritySignature};
-    use mgo_types::committee::Committee;
-    use std::collections::BTreeMap;
     
-    // Create minimal committee and signature for restore purposes
-    let committee = Committee::new(target_epoch, BTreeMap::new());
+    // Create minimal signature for restore purposes (skip committee creation)
     let aggregate_sig = AggregateAuthoritySignature::default();
     let quorum_sig_info = AuthorityQuorumSignInfo {
         epoch: target_epoch,
