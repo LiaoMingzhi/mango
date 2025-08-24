@@ -1080,8 +1080,8 @@ async fn perform_production_database_restoration(
     use std::path::Path;
     use typed_store::rocks::default_db_options;
     use mgo_core::authority::authority_store_tables::AuthorityPerpetualTables;
-    use mgo_core::authority::epoch_start_configuration::EpochStartConfiguration;
-    use mgo_types::mgo_system_state::epoch_start_mgo_system_state::EpochStartSystemState;
+    use mgo_core::authority::epoch_start_configuration::{EpochStartConfiguration, EpochStartConfigTrait};
+    use mgo_types::mgo_system_state::epoch_start_mgo_system_state::{EpochStartSystemState, EpochStartSystemStateTrait};
     use mgo_types::messages_checkpoint::CheckpointDigest;
     use mgo_types::base_types::EpochId;
     use fastcrypto::hash::{HashFunction, Sha3_256};
@@ -1146,6 +1146,10 @@ async fn perform_production_database_restoration(
         EpochStartConfigurationV1::new(new_system_state, checkpoint_digest)
     );
     
+    if !json {
+        println!("🔍 VERIFICATION: Created EpochStartConfiguration with epoch: {}", new_epoch_config.epoch_start_state().epoch());
+    }
+    
     // Step 5: CRITICAL - Update database with new epoch configuration
     if !json {
         println!("💾 CRITICAL: Updating database epoch configuration...");
@@ -1157,6 +1161,8 @@ async fn perform_production_database_restoration(
             if !json {
                 println!("✅ Database epoch configuration updated successfully!");
                 println!("🎯 Recovery epoch set to: {}", target_epoch);
+                
+                // Note: Configuration verification happens later during node startup
             }
         }
         Err(e) => {
