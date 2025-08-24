@@ -801,6 +801,40 @@ async fn restore_snapshot(
             std::thread::sleep(Duration::from_secs(2));
         }
         
+        // CRITICAL: Save original database subdirectory BEFORE cleaning
+        let authorities_db_dir = std::path::Path::new("./authorities_db");
+        let mut original_subdir = None;
+        
+        if authorities_db_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(authorities_db_dir) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.is_dir() && path.file_name().unwrap().to_string_lossy().len() == 12 {
+                            original_subdir = Some(path.file_name().unwrap().to_string_lossy().to_string());
+                            if !json {
+                                println!("🔍 DETECTED original node database subdirectory: {}", original_subdir.as_ref().unwrap());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Save this information BEFORE any cleanup for later use in database restoration
+        if let Some(ref subdir) = original_subdir {
+            let backup_info = format!("original_db_subdir: {}\ntarget_epoch: {}\nrestore_timestamp: {}\n", 
+                subdir, target_epoch, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+            if let Err(e) = std::fs::write("../mango-cluster/node_db_backup.txt", backup_info) {
+                if !json {
+                    println!("⚠️  WARNING: Could not save backup state: {}", e);
+                }
+            } else if !json {
+                println!("💾 SAVED original database path information for restoration");
+            }
+        }
+        
         // Clean existing data directories
         if !json {
             println!("🧹 Cleaning existing data directories...");
@@ -963,40 +997,6 @@ async fn perform_real_snapshot_restoration(
 ) -> Result<(), anyhow::Error> {
         if !json {
             println!("🔧 Initializing mgo-snapshot restoration engine...");
-        }
-        
-        // CRITICAL: Save original database subdirectory BEFORE any cleanup
-        let authorities_db_dir = std::path::Path::new("./authorities_db");
-        let mut original_subdir = None;
-        
-        if authorities_db_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(authorities_db_dir) {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        if path.is_dir() && path.file_name().unwrap().to_string_lossy().len() == 12 {
-                            original_subdir = Some(path.file_name().unwrap().to_string_lossy().to_string());
-                            if !json {
-                                println!("🔍 DETECTED original node database subdirectory: {}", original_subdir.as_ref().unwrap());
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Save this information for later use in database restoration
-        if let Some(ref subdir) = original_subdir {
-            let backup_info = format!("original_db_subdir: {}\ntarget_epoch: {}\nrestore_timestamp: {}\n", 
-                subdir, target_epoch, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
-            if let Err(e) = std::fs::write("../mango-cluster/node_db_backup.txt", backup_info) {
-                if !json {
-                    println!("⚠️  WARNING: Could not save backup state: {}", e);
-                }
-            } else if !json {
-                println!("💾 SAVED original database path information for restoration");
-            }
         }
         
         // Use real mgo-core state recovery APIs
