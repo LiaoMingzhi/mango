@@ -20,6 +20,7 @@ pub mod incremental;
 pub mod strategy;
 pub mod performance;
 pub mod scheduler;
+pub mod rollback;
 
 // API and monitoring modules
 #[cfg(feature = "api")]
