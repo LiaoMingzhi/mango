@@ -1296,9 +1296,9 @@ async fn perform_production_database_restoration(
         println!("🔧 COMMITTEE: Inserting Committee for epoch {} into committee_store...", target_epoch);
     }
     
-    // Create committee store in the same database path  
+    // Create committee store using the SAME path as node startup (epochs directory)
     use mgo_core::epoch::committee_store::CommitteeStore;
-    let committee_store_path = db_path.parent().unwrap().join("committee");
+    let committee_store_path = db_path.parent().unwrap().join("epochs");  // 修复：使用与节点启动相同的路径
     std::fs::create_dir_all(&committee_store_path)?;
     
     let committee_store = CommitteeStore::new(committee_store_path, &target_committee, None);
