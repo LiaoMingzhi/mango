@@ -173,14 +173,17 @@ impl CheckpointExecutor {
             .get_highest_executed_checkpoint()
             .unwrap();
 
-        // FORCE GENESIS MODE: Strong conditions to ensure clean genesis behavior
-        let mut next_to_schedule = if epoch_store.epoch() <= 1 {
-            warn!("🎯 GENESIS MODE: Epoch {} <= 1, forcing checkpoint 0 start (total_checkpoints: {})", 
-                  epoch_store.epoch(), total_checkpoints);
+        // ENHANCED GENESIS DETECTION: More precise logic to prevent genesis/snapshot conflicts
+        // Only force genesis mode in very specific scenarios to avoid disrupting normal operation
+        let mut next_to_schedule = if epoch_store.epoch() == 0 {
+            // True genesis case: epoch 0 should always start from checkpoint 0
+            warn!("🎯 GENESIS MODE: Epoch 0 detected, forcing checkpoint 0 start (total_checkpoints: {})", 
+                  total_checkpoints);
             0
-        } else if total_checkpoints <= 3 {
-            warn!("🎯 GENESIS MODE: Only {} checkpoints exist in epoch {}, forcing checkpoint 0 start", 
-                  total_checkpoints, epoch_store.epoch());
+        } else if epoch_store.epoch() == 1 && highest_executed.is_none() && total_checkpoints <= 3 {
+            // Genesis just completed: epoch 1 with no executed checkpoints and very few total checkpoints
+            warn!("🎯 GENESIS MODE: Fresh epoch 1 with no executed checkpoints (total_checkpoints: {}), forcing checkpoint 0 start", 
+                  total_checkpoints);
             0
         } else {
             // Normal case: use highest_executed or snapshot restore logic
@@ -188,17 +191,17 @@ impl CheckpointExecutor {
                 .as_ref()
                 .map(|c| c.sequence_number() + 1)
                 .unwrap_or_else(|| {
-                    // This is a genuine snapshot restore scenario
-                    // We have higher epoch numbers and significant checkpoint history
-                    warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
-                          epoch_store.epoch(), total_checkpoints);
-                          
-                    if total_checkpoints == 0 {
-                        // Snapshot restore with no checkpoints - start from epoch
-                        epoch_store.epoch() as u64
-                    } else {
-                        // Snapshot restore with existing checkpoints - continue from latest + 1
+                    // This could be a snapshot restore scenario or fresh start
+                    if epoch_store.epoch() > 1 && total_checkpoints > 10 {
+                        // Likely snapshot restore scenario: higher epoch with significant checkpoint history
+                        warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
+                              epoch_store.epoch(), total_checkpoints);
                         total_checkpoints
+                    } else {
+                        // Fresh start or minimal state: start from checkpoint 0
+                        warn!("🎯 FRESH START MODE: Epoch {}, {} checkpoints - starting from checkpoint 0", 
+                              epoch_store.epoch(), total_checkpoints);
+                        0
                     }
                 })
         };
