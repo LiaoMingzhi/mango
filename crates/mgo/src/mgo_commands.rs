@@ -1261,9 +1261,13 @@ async fn perform_production_database_restoration(
     use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
     use fastcrypto::traits::ToFromBytes;
     use mgo_types::crypto::AuthorityPublicKeyBytes;
-    // Create a dummy public key for the committee
-    let dummy_key_bytes = [0u8; 96]; // BLS12381 public key is 96 bytes
-    let dummy_bls_key = BLS12381PublicKey::from_bytes(&dummy_key_bytes).unwrap();
+    // Create a valid dummy public key for the committee using key generation
+    use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
+    use fastcrypto::traits::KeyPair;
+    use rand::rngs::ThreadRng;
+    let mut rng = rand::thread_rng();
+    let dummy_keypair = BLS12381KeyPair::generate(&mut rng);
+    let dummy_bls_key = dummy_keypair.public().clone();
     let dummy_authority_pubkey = AuthorityPublicKeyBytes::from(&dummy_bls_key);
     voting_rights.insert(dummy_authority_pubkey, 1u64);
     
