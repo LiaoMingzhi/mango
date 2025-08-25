@@ -1271,6 +1271,8 @@ async fn perform_production_database_restoration(
     let dummy_authority_pubkey = AuthorityPublicKeyBytes::from(&dummy_bls_key);
     voting_rights.insert(dummy_authority_pubkey, 10000u64);  // 修复：使用正确的TOTAL_VOTING_POWER
     
+    // Create genesis committee (epoch 0) first, then target committee
+    let genesis_committee = Committee::new(0, voting_rights.clone());
     let target_committee = Committee::new(target_epoch, voting_rights);
     if !json {
         println!("🔧 COMMITTEE: Created Committee for epoch {}", target_epoch);
@@ -1305,7 +1307,10 @@ async fn perform_production_database_restoration(
     let committee_store_path = db_path.parent().unwrap().join("epochs");  // 修复：使用与节点启动相同的路径
     std::fs::create_dir_all(&committee_store_path)?;
     
-    let committee_store = CommitteeStore::new(committee_store_path, &target_committee, None);
+    // Initialize with genesis committee
+    let committee_store = CommitteeStore::new(committee_store_path, &genesis_committee, None);
+    
+    // Insert target epoch committee
     match committee_store.insert_new_committee(&target_committee) {
         Ok(_) => {
             if !json {
