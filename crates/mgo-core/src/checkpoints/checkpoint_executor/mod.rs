@@ -171,13 +171,28 @@ impl CheckpointExecutor {
             .as_ref()
             .map(|c| c.sequence_number() + 1)
             .unwrap_or_else(|| {
-                // Fixed: Support snapshot restoration - start from current epoch when no highest executed checkpoint
-                // This handles the case where we restore from a snapshot and don't have execution history
+                // Check if this is a snapshot restoration scenario by looking at database state
+                // In a true genesis scenario, the checkpoint store should be empty AND epoch should be 0
+                // In a snapshot restore scenario, we might have epoch > 0 but no executed checkpoints
                 if epoch_store.epoch() == 0 {
-                    0  // Normal genesis case
+                    0  // Normal genesis case - always start from checkpoint 0
                 } else {
-                    // Snapshot restoration case: start from current epoch
-                    epoch_store.epoch() as u64
+                    // Potential snapshot restoration case
+                    // BUT: We need to be very careful - if this is genesis with epoch > 0, we still want checkpoint 0
+                    // Only use epoch-based scheduling if we're certain this is a snapshot restore
+                    // Check if there are any checkpoints in the store at all
+                    let total_checkpoints = self.checkpoint_store.get_latest_certified_checkpoint()
+                        .map(|c| c.sequence_number() + 1)
+                        .unwrap_or(0);
+                    
+                    if total_checkpoints == 0 {
+                        // No checkpoints exist - this should start from 0 regardless of epoch
+                        // This handles both genesis and clean snapshot restore scenarios
+                        0
+                    } else {
+                        // There are checkpoints but none executed - use epoch-based logic
+                        epoch_store.epoch() as u64
+                    }
                 }
             });
         let mut pending: CheckpointExecutionBuffer = FuturesOrdered::new();
