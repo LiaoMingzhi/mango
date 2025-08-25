@@ -162,46 +162,46 @@ impl CheckpointExecutor {
 
         // Decide the first checkpoint to schedule for execution.
         // If we haven't executed anything in the past, we schedule checkpoint 0.
-        // Otherwise we schedule the one after highest executed.
+        // CRITICAL GENESIS DETECTION: Enhanced logic to prevent genesis/snapshot conflicts
+        // Check BEFORE using highest_executed to ensure clean genesis behavior
+        let total_checkpoints = self.checkpoint_store.get_latest_certified_checkpoint()
+            .map(|c| c.sequence_number() + 1)
+            .unwrap_or(0);
+
         let mut highest_executed = self
             .checkpoint_store
             .get_highest_executed_checkpoint()
             .unwrap();
-        let mut next_to_schedule = highest_executed
-            .as_ref()
-            .map(|c| c.sequence_number() + 1)
-            .unwrap_or_else(|| {
-                // CRITICAL GENESIS DETECTION: Enhanced logic to prevent genesis/snapshot conflicts
-                let total_checkpoints = self.checkpoint_store.get_latest_certified_checkpoint()
-                    .map(|c| c.sequence_number() + 1)
-                    .unwrap_or(0);
-                
-                // FORCE GENESIS MODE: Strong conditions to ensure clean genesis behavior
-                // Condition 1: Early epoch (definitely genesis)
-                if epoch_store.epoch() <= 1 {
-                    warn!("GENESIS MODE: Epoch {} <= 1, forcing checkpoint 0 start", epoch_store.epoch());
-                    return 0;
-                }
-                
-                // Condition 2: Very few checkpoints (likely genesis or clean reset)
-                if total_checkpoints <= 3 {
-                    warn!("GENESIS MODE: Only {} checkpoints exist, forcing checkpoint 0 start", total_checkpoints);
-                    return 0;
-                }
-                
-                // Condition 3: This is a genuine snapshot restore scenario
-                // We have higher epoch numbers and significant checkpoint history
-                warn!("SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
-                      epoch_store.epoch(), total_checkpoints);
-                      
-                if total_checkpoints == 0 {
-                    // Snapshot restore with no checkpoints - start from epoch
-                    epoch_store.epoch() as u64
-                } else {
-                    // Snapshot restore with existing checkpoints - continue from latest + 1
-                    total_checkpoints
-                }
-            });
+
+        // FORCE GENESIS MODE: Strong conditions to ensure clean genesis behavior
+        let mut next_to_schedule = if epoch_store.epoch() <= 1 {
+            warn!("🎯 GENESIS MODE: Epoch {} <= 1, forcing checkpoint 0 start (total_checkpoints: {})", 
+                  epoch_store.epoch(), total_checkpoints);
+            0
+        } else if total_checkpoints <= 3 {
+            warn!("🎯 GENESIS MODE: Only {} checkpoints exist in epoch {}, forcing checkpoint 0 start", 
+                  total_checkpoints, epoch_store.epoch());
+            0
+        } else {
+            // Normal case: use highest_executed or snapshot restore logic
+            highest_executed
+                .as_ref()
+                .map(|c| c.sequence_number() + 1)
+                .unwrap_or_else(|| {
+                    // This is a genuine snapshot restore scenario
+                    // We have higher epoch numbers and significant checkpoint history
+                    warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
+                          epoch_store.epoch(), total_checkpoints);
+                          
+                    if total_checkpoints == 0 {
+                        // Snapshot restore with no checkpoints - start from epoch
+                        epoch_store.epoch() as u64
+                    } else {
+                        // Snapshot restore with existing checkpoints - continue from latest + 1
+                        total_checkpoints
+                    }
+                })
+        };
         let mut pending: CheckpointExecutionBuffer = FuturesOrdered::new();
 
         let mut now_time = Instant::now();
