@@ -171,28 +171,35 @@ impl CheckpointExecutor {
             .as_ref()
             .map(|c| c.sequence_number() + 1)
             .unwrap_or_else(|| {
-                // Enhanced detection: Check multiple indicators to determine if this is genesis vs snapshot restore
+                // CRITICAL GENESIS DETECTION: Enhanced logic to prevent genesis/snapshot conflicts
                 let total_checkpoints = self.checkpoint_store.get_latest_certified_checkpoint()
                     .map(|c| c.sequence_number() + 1)
                     .unwrap_or(0);
                 
-                // Check if authority store indicates genesis state
-                let is_likely_genesis = epoch_store.epoch() <= 1 && total_checkpoints <= 3;
+                // FORCE GENESIS MODE: Strong conditions to ensure clean genesis behavior
+                // Condition 1: Early epoch (definitely genesis)
+                if epoch_store.epoch() <= 1 {
+                    warn!("GENESIS MODE: Epoch {} <= 1, forcing checkpoint 0 start", epoch_store.epoch());
+                    return 0;
+                }
                 
-                if is_likely_genesis {
-                    // Force genesis behavior: Always start from checkpoint 0 in early epochs
-                    // This handles both clean genesis and recently reset scenarios
-                    0
+                // Condition 2: Very few checkpoints (likely genesis or clean reset)
+                if total_checkpoints <= 3 {
+                    warn!("GENESIS MODE: Only {} checkpoints exist, forcing checkpoint 0 start", total_checkpoints);
+                    return 0;
+                }
+                
+                // Condition 3: This is a genuine snapshot restore scenario
+                // We have higher epoch numbers and significant checkpoint history
+                warn!("SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
+                      epoch_store.epoch(), total_checkpoints);
+                      
+                if total_checkpoints == 0 {
+                    // Snapshot restore with no checkpoints - start from epoch
+                    epoch_store.epoch() as u64
                 } else {
-                    // This looks like a genuine snapshot restore scenario
-                    // We have higher epoch numbers and significant checkpoint history
-                    if total_checkpoints == 0 {
-                        // Snapshot restore with no checkpoints - start from epoch
-                        epoch_store.epoch() as u64
-                    } else {
-                        // Snapshot restore with existing checkpoints - continue from latest + 1
-                        total_checkpoints
-                    }
+                    // Snapshot restore with existing checkpoints - continue from latest + 1
+                    total_checkpoints
                 }
             });
         let mut pending: CheckpointExecutionBuffer = FuturesOrdered::new();
