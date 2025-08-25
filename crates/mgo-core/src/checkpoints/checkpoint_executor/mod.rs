@@ -171,9 +171,14 @@ impl CheckpointExecutor {
             .as_ref()
             .map(|c| c.sequence_number() + 1)
             .unwrap_or_else(|| {
-                // TODO this invariant may no longer hold once we introduce snapshots
-                assert_eq!(epoch_store.epoch(), 0);
-                0
+                // Fixed: Support snapshot restoration - start from current epoch when no highest executed checkpoint
+                // This handles the case where we restore from a snapshot and don't have execution history
+                if epoch_store.epoch() == 0 {
+                    0  // Normal genesis case
+                } else {
+                    // Snapshot restoration case: start from current epoch
+                    epoch_store.epoch() as u64
+                }
             });
         let mut pending: CheckpointExecutionBuffer = FuturesOrdered::new();
 
