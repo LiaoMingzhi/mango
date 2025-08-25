@@ -1269,7 +1269,7 @@ async fn perform_production_database_restoration(
     let dummy_keypair = BLS12381KeyPair::generate(&mut rng);
     let dummy_bls_key = dummy_keypair.public().clone();
     let dummy_authority_pubkey = AuthorityPublicKeyBytes::from(&dummy_bls_key);
-    voting_rights.insert(dummy_authority_pubkey, 1u64);
+    voting_rights.insert(dummy_authority_pubkey, 10000u64);  // 修复：使用正确的TOTAL_VOTING_POWER
     
     let target_committee = Committee::new(target_epoch, voting_rights);
     if !json {
