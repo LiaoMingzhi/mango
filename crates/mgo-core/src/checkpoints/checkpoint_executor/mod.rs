@@ -171,27 +171,27 @@ impl CheckpointExecutor {
             .as_ref()
             .map(|c| c.sequence_number() + 1)
             .unwrap_or_else(|| {
-                // Check if this is a snapshot restoration scenario by looking at database state
-                // In a true genesis scenario, the checkpoint store should be empty AND epoch should be 0
-                // In a snapshot restore scenario, we might have epoch > 0 but no executed checkpoints
-                if epoch_store.epoch() == 0 {
-                    0  // Normal genesis case - always start from checkpoint 0
+                // Enhanced detection: Check multiple indicators to determine if this is genesis vs snapshot restore
+                let total_checkpoints = self.checkpoint_store.get_latest_certified_checkpoint()
+                    .map(|c| c.sequence_number() + 1)
+                    .unwrap_or(0);
+                
+                // Check if authority store indicates genesis state
+                let is_likely_genesis = epoch_store.epoch() <= 1 && total_checkpoints <= 3;
+                
+                if is_likely_genesis {
+                    // Force genesis behavior: Always start from checkpoint 0 in early epochs
+                    // This handles both clean genesis and recently reset scenarios
+                    0
                 } else {
-                    // Potential snapshot restoration case
-                    // BUT: We need to be very careful - if this is genesis with epoch > 0, we still want checkpoint 0
-                    // Only use epoch-based scheduling if we're certain this is a snapshot restore
-                    // Check if there are any checkpoints in the store at all
-                    let total_checkpoints = self.checkpoint_store.get_latest_certified_checkpoint()
-                        .map(|c| c.sequence_number() + 1)
-                        .unwrap_or(0);
-                    
+                    // This looks like a genuine snapshot restore scenario
+                    // We have higher epoch numbers and significant checkpoint history
                     if total_checkpoints == 0 {
-                        // No checkpoints exist - this should start from 0 regardless of epoch
-                        // This handles both genesis and clean snapshot restore scenarios
-                        0
-                    } else {
-                        // There are checkpoints but none executed - use epoch-based logic
+                        // Snapshot restore with no checkpoints - start from epoch
                         epoch_store.epoch() as u64
+                    } else {
+                        // Snapshot restore with existing checkpoints - continue from latest + 1
+                        total_checkpoints
                     }
                 }
             });
