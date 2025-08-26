@@ -296,17 +296,17 @@ async fn process_snapshot_request(
     
     // Parse request file
     let content = fs::read_to_string(request_file)?;
-    let epoch = parse_snapshot_request(&content)?;
+    let (epoch, requested_path) = parse_snapshot_request(&content)?;
     
     info!("📊 Processing snapshot request for epoch: {}", epoch);
+    info!("📁 Requested snapshot path: {}", requested_path);
     
     // Get AuthorityState from the node
     let state = node.state();
     
     // Create snapshot using the safe checkpoint_all_dbs method
     let epoch_store = state.epoch_store_for_testing(); // Use for_testing since it's accessible
-    let snapshot_path = std::path::Path::new("../mango-cluster/snapshots")
-        .join(format!("auto_snapshot_epoch_{}", epoch));
+    let snapshot_path = std::path::Path::new(&requested_path);
     
     // Create directory if it doesn't exist
     fs::create_dir_all(&snapshot_path)?;
@@ -322,9 +322,13 @@ async fn process_snapshot_request(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
+    let fallback_id = format!("auto_epoch_{}", epoch);
+    let snapshot_id = snapshot_path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&fallback_id);
     let metadata = format!(
-        "snapshot_id=auto_epoch_{}\nepoch={}\ncreated_at={}\ncreated_by=mgo-node\ntype=full\nstatus=completed\n",
-        epoch,
+        "snapshot_id={}\nepoch={}\ncreated_at={}\ncreated_by=mgo-node\ntype=full\nstatus=completed\n",
+        snapshot_id,
         epoch,
         now
     );
@@ -334,16 +338,27 @@ async fn process_snapshot_request(
     Ok(())
 }
 
-/// Parse epoch from snapshot request content
-fn parse_snapshot_request(content: &str) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+/// Parse epoch and path from snapshot request content
+fn parse_snapshot_request(content: &str) -> Result<(u64, String), Box<dyn std::error::Error + Send + Sync>> {
     // Format: "SNAPSHOT_REQUEST|epoch=2|path=...|timestamp=...|requester=..."
+    let mut epoch = None;
+    let mut path = None;
+    
     for part in content.split('|') {
         if let Some(epoch_str) = part.strip_prefix("epoch=") {
-            return epoch_str.parse::<u64>()
-                .map_err(|e| format!("Invalid epoch in request: {}", e).into());
+            epoch = Some(epoch_str.parse::<u64>()
+                .map_err(|e| format!("Invalid epoch in request: {}", e))?);
+        } else if let Some(path_str) = part.strip_prefix("path=") {
+            // Remove quotes if present
+            let cleaned_path = path_str.trim_matches('"').to_string();
+            path = Some(cleaned_path);
         }
     }
-    Err("No epoch found in snapshot request".into())
+    
+    let epoch = epoch.ok_or("No epoch found in snapshot request")?;
+    let path = path.ok_or("No path found in snapshot request")?;
+    
+    Ok((epoch, path))
 }
 
 /// Check for snapshot restore configuration and apply epoch override if needed
