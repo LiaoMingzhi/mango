@@ -581,6 +581,94 @@ impl AuthorityPerpetualTables {
     pub fn get_executed_effects_table_for_snapshot(&self) -> &DBMap<TransactionDigest, TransactionEffectsDigest> {
         &self.executed_effects
     }
+    
+    /// Get read-only access to events table for snapshot creation
+    pub fn get_events_table_for_snapshot(&self) -> &DBMap<(TransactionEventsDigest, usize), Event> {
+        &self.events
+    }
+    
+    /// Get read-only access to epoch start configuration table for snapshot creation
+    pub fn get_epoch_start_configuration_table_for_snapshot(&self) -> &DBMap<(), EpochStartConfiguration> {
+        &self.epoch_start_configuration
+    }
+    
+    /// Iterator over all transactions for snapshot creation
+    pub fn iter_transactions_for_snapshot(&self) -> impl Iterator<Item = (TransactionDigest, TrustedTransaction)> + '_ {
+        self.transactions.unbounded_iter()
+    }
+    
+    /// Iterator over all transaction effects for snapshot creation  
+    pub fn iter_effects_for_snapshot(&self) -> impl Iterator<Item = (TransactionEffectsDigest, TransactionEffects)> + '_ {
+        self.effects.unbounded_iter()
+    }
+    
+    /// Iterator over all executed effects for snapshot creation
+    pub fn iter_executed_effects_for_snapshot(&self) -> impl Iterator<Item = (TransactionDigest, TransactionEffectsDigest)> + '_ {
+        self.executed_effects.unbounded_iter()
+    }
+    
+    /// Iterator over all events for snapshot creation
+    pub fn iter_events_for_snapshot(&self) -> impl Iterator<Item = ((TransactionEventsDigest, usize), Event)> + '_ {
+        self.events.unbounded_iter()
+    }
+    
+    /// Get EpochStartConfiguration by key for snapshot creation
+    pub fn get_epoch_start_configuration_for_snapshot(&self) -> Result<Option<EpochStartConfiguration>, typed_store::TypedStoreError> {
+        self.epoch_start_configuration.get(&())
+    }
+    
+    /// Get transaction by digest for snapshot creation
+    pub fn get_transaction_for_snapshot(&self, digest: &TransactionDigest) -> Result<Option<TrustedTransaction>, typed_store::TypedStoreError> {
+        self.transactions.get(digest)
+    }
+    
+    /// Get effects by digest for snapshot creation
+    pub fn get_effects_by_digest_for_snapshot(&self, digest: &TransactionEffectsDigest) -> Result<Option<TransactionEffects>, typed_store::TypedStoreError> {
+        self.effects.get(digest)
+    }
+    
+    /// Get events by digest and index for snapshot creation
+    pub fn get_events_for_snapshot(&self, digest: &TransactionEventsDigest, index: usize) -> Result<Option<Event>, typed_store::TypedStoreError> {
+        self.events.get(&(*digest, index))
+    }
+    
+    /// Get total transaction count estimation for snapshot planning - async version
+    pub async fn estimate_transaction_count(&self) -> Result<u64, typed_store::TypedStoreError> {
+        // Estimate by checking the size of transactions table
+        let mut count = 0u64;
+        for _transaction in self.transactions.unbounded_iter() {
+            count += 1;
+            // For performance, cap the counting at a reasonable limit
+            if count > 1000000 {
+                break;
+            }
+        }
+        Ok(count)
+    }
+    
+    /// Get total effects count estimation for snapshot planning - async version
+    pub async fn estimate_effects_count(&self) -> Result<u64, typed_store::TypedStoreError> {
+        let mut count = 0u64;
+        for _effect in self.effects.unbounded_iter() {
+            count += 1;
+            if count > 1000000 {
+                break;
+            }
+        }
+        Ok(count)
+    }
+    
+    /// Get total events count estimation for snapshot planning - async version
+    pub async fn estimate_events_count(&self) -> Result<u64, typed_store::TypedStoreError> {
+        let mut count = 0u64;
+        for _event in self.events.unbounded_iter() {
+            count += 1;
+            if count > 1000000 {
+                break;
+            }
+        }
+        Ok(count)
+    }
 
 
 }

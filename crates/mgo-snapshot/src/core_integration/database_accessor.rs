@@ -50,16 +50,9 @@ impl DatabaseAccessor {
 
     /// Get current epoch from authority state
     pub async fn get_current_epoch(&self) -> Result<EpochId, SnapshotError> {
-        // TODO: get_epoch_store method not available in current AuthorityState
-        // Try to get from checkpoint store instead
-        match self.checkpoint_store.get_highest_verified_checkpoint() {
-            Ok(Some(highest_checkpoint)) => Ok(highest_checkpoint.epoch()),
-            _ => {
-                // Fallback to epoch 0 if no checkpoints exist
-                tracing::warn!("Could not get current epoch, defaulting to 0");
-                Ok(0)
-            }
-        }
+        // Get current epoch from epoch store
+        let epoch_store = self.authority_state.epoch_store_for_snapshot();
+        Ok(epoch_store.epoch())
     }
 
     /// Get transaction by digest
@@ -152,10 +145,10 @@ impl DatabaseAccessor {
 
     /// Get committee for epoch
     pub fn get_committee(&self, _epoch: EpochId) -> Result<Option<Committee>, SnapshotError> {
-        // TODO: get_epoch_store method not available in current AuthorityState
-        // For now, return None
-        tracing::warn!("Committee access not yet implemented due to API limitations");
-        Ok(None)
+        // Get current epoch store and its committee
+        let epoch_store = self.authority_state.epoch_store_for_snapshot();
+        let committee = epoch_store.committee();
+        Ok(Some((**committee).clone()))
     }
 
     /// Get current committee
@@ -216,11 +209,10 @@ impl DatabaseAccessor {
         let mut results = Vec::new();
         let mut count = 0;
         
-        // TODO: iter_executed_transactions_for_checkpoint not available
-        // For now, return empty results
-        tracing::warn!("Transaction range collection not yet implemented due to API limitations");
-        let _empty_iter: Vec<(mgo_types::base_types::TransactionDigest, ())> = vec![];
-        for (digest, _) in _empty_iter {
+        // Use the iterator from AuthorityPerpetualTables to get all transactions
+        let transaction_iter = self.perpetual_tables.iter_transactions_for_snapshot();
+        
+        for (digest, trusted_tx) in transaction_iter {
             // Skip transactions before the start digest if specified
             if let Some(ref start) = start_digest {
                 if digest < *start {
@@ -228,21 +220,13 @@ impl DatabaseAccessor {
                 }
             }
             
-            // Get the transaction for this digest
-            match self.get_transaction(&digest)? {
-                Some(trusted_tx) => {
-                    let transaction = trusted_tx.into_inner();
-                    results.push((digest, transaction));
-                    count += 1;
-                    
-                    if count >= limit {
-                        break;
-                    }
-                }
-                None => {
-                    tracing::warn!("Transaction {:?} not found despite being in executed list", digest);
-                    continue;
-                }
+            // Get the transaction from the trusted transaction wrapper
+            let transaction = trusted_tx.into_inner();
+            results.push((digest, transaction));
+            count += 1;
+            
+            if count >= limit {
+                break;
             }
         }
         
@@ -260,9 +244,9 @@ impl DatabaseAccessor {
             object_count += 1;
         }
         
-        // TODO: Transaction counting not available due to API limitations
-        // Placeholder estimation
-        transaction_count = 1000; // Rough estimate
+        // Use AuthorityPerpetualTables estimate_transaction_count method
+        transaction_count = futures::executor::block_on(self.perpetual_tables.estimate_transaction_count())
+            .unwrap_or(1000); // Use fallback if estimation fails
         
         // If we hit the limit, estimate the total
         if object_count == 10000 {
@@ -272,8 +256,8 @@ impl DatabaseAccessor {
             transaction_count *= 10; // Rough estimation
         }
         
-        // TODO: This should be async, but we need to make this method async too
-        let current_epoch = 0; // Placeholder
+        // Get current epoch from epoch store
+        let current_epoch = self.authority_state.epoch_store_for_snapshot().epoch();
         
         Ok(DatabaseStats {
             estimated_object_count: object_count,

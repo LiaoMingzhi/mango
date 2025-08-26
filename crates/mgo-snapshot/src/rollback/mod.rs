@@ -14,6 +14,7 @@ pub use operations::*;
 use crate::types::{SnapshotId, SnapshotResult};
 
 /// Rollback capability trait for different blockchain components
+#[async_trait::async_trait]
 pub trait RollbackCapable {
     /// Check if component supports rollback to the specified epoch
     async fn can_rollback_to_epoch(&self, epoch: u64) -> SnapshotResult<bool>;

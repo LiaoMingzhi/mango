@@ -19,6 +19,7 @@ use mgo_core::{
     authority::authority_store_tables::{AuthorityPerpetualTables, LiveObject},
     checkpoints::CheckpointStore,
 };
+use mgo_types::messages_checkpoint::VerifiedCheckpoint;
 
 use crate::types::{
     error::{SnapshotError, SnapshotResult},
@@ -158,6 +159,29 @@ impl EnhancedDatabaseAccessor {
         // Return a placeholder committee structure
         let placeholder_committee = format!("committee_epoch_{}", epoch);
         Ok(Some(placeholder_committee.into_bytes()))
+    }
+
+    /// Get highest synced checkpoint
+    pub fn get_highest_synced_checkpoint(&self) -> SnapshotResult<Option<VerifiedCheckpoint>> {
+        info!("Getting highest synced checkpoint");
+        match self.checkpoint_store.get_highest_synced_checkpoint() {
+            Ok(checkpoint) => {
+                if let Some(ref checkpoint) = checkpoint {
+                    debug!("Found highest synced checkpoint: seq={}, epoch={}", 
+                           checkpoint.sequence_number(), checkpoint.epoch());
+                } else {
+                    debug!("No synced checkpoint found");
+                }
+                Ok(checkpoint)
+            }
+            Err(e) => {
+                error!("Failed to get highest synced checkpoint: {}", e);
+                Err(SnapshotError::InvalidOperation {
+                    operation: "get_highest_synced_checkpoint".to_string(),
+                    reason: format!("Checkpoint store error: {}", e),
+                })
+            }
+        }
     }
 
     /// Count objects in the system

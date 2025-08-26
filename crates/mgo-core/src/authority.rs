@@ -2994,6 +2994,12 @@ impl AuthorityState {
         self.load_epoch_store_one_call_per_task()
     }
 
+    /// Get epoch store for snapshot operations. 
+    /// This provides access to epoch-specific data needed for snapshot creation.
+    pub fn epoch_store_for_snapshot(&self) -> Guard<Arc<AuthorityPerEpochStore>> {
+        self.epoch_store.load()
+    }
+
     pub fn clone_committee_for_testing(&self) -> Committee {
         Committee::clone(self.epoch_store_for_testing().committee())
     }
