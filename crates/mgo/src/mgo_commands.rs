@@ -2157,8 +2157,12 @@ async fn get_current_epoch_from_running_node() -> Result<u64, anyhow::Error> {
         println!("🔍 Attempting to connect to running mgo-node for safe snapshot creation...");
     }
     
-    // Try to create snapshot using checkpoint_all_dbs method
-    let snapshot_path = snapshots_dir.join(format!("node_snapshot_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S")));
+    // Try to create snapshot using checkpoint_all_dbs method  
+    let snapshot_path = if let Some(target_epoch) = epoch {
+        snapshots_dir.join(format!("auto_epoch_{}_{}", target_epoch, chrono::Utc::now().format("%Y%m%d_%H%M%S")))
+    } else {
+        snapshots_dir.join(format!("auto_snapshot_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S")))
+    };
     
     // First, try the thread-safe approach through running node
     let use_safe_method = try_create_snapshot_via_running_node(&snapshot_path, epoch, json).await;
