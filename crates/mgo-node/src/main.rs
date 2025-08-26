@@ -200,13 +200,21 @@ fn main() {
         mgo_node::admin::run_admin_server(node, admin_interface_port, filter_handle).await
     });
 
+    let node_once_cell_clone2 = node_once_cell.clone();
     runtimes.metrics.spawn(async move {
-        let node = node_once_cell.get().await;
+        let node = node_once_cell_clone2.get().await;
         let state = node.state();
         loop {
             send_telemetry_event(state.clone(), is_validator).await;
             sleep(Duration::from_secs(3600)).await;
         }
+    });
+
+    // Add snapshot request monitoring task
+    let node_once_cell_clone3 = node_once_cell.clone();
+    runtimes.mgo_node.spawn(async move {
+        let node = node_once_cell_clone3.get().await;
+        monitor_snapshot_requests(node).await;
     });
 
     // wait for SIGINT on the main thread
@@ -243,6 +251,99 @@ async fn wait_termination(mut shutdown_rx: tokio::sync::broadcast::Receiver<()>)
         _ = sigterm_recv => {},
         _ = shutdown_recv => {},
     }
+}
+
+/// Monitor for snapshot requests and process them using AuthorityState
+async fn monitor_snapshot_requests(node: Arc<mgo_node::MgoNode>) {
+    use std::fs;
+    use std::path::Path;
+    
+    info!("🔍 Starting snapshot request monitor...");
+    
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        
+        let request_file = "snapshot_request.signal";
+        if Path::new(request_file).exists() {
+            info!("📤 Received snapshot request");
+            
+            match process_snapshot_request(&node, request_file).await {
+                Ok(_) => {
+                    info!("✅ Snapshot request processed successfully");
+                }
+                Err(e) => {
+                    error!("❌ Failed to process snapshot request: {}", e);
+                    // Write error to error file
+                    let error_content = format!("Snapshot creation failed: {}", e);
+                    if let Err(write_err) = fs::write("snapshot_request.error", error_content) {
+                        error!("Failed to write error file: {}", write_err);
+                    }
+                }
+            }
+            
+            // Clean up request file
+            let _ = fs::remove_file(request_file);
+        }
+    }
+}
+
+/// Process a snapshot request using AuthorityState's checkpoint_all_dbs
+async fn process_snapshot_request(
+    node: &Arc<mgo_node::MgoNode>, 
+    request_file: &str
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::fs;
+    
+    // Parse request file
+    let content = fs::read_to_string(request_file)?;
+    let epoch = parse_snapshot_request(&content)?;
+    
+    info!("📊 Processing snapshot request for epoch: {}", epoch);
+    
+    // Get AuthorityState from the node
+    let state = node.state();
+    
+    // Create snapshot using the safe checkpoint_all_dbs method
+    let epoch_store = state.epoch_store_for_testing(); // Use for_testing since it's accessible
+    let snapshot_path = std::path::Path::new("../mango-cluster/snapshots")
+        .join(format!("auto_snapshot_epoch_{}", epoch));
+    
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&snapshot_path)?;
+    
+    info!("📸 Creating database snapshot...");
+    
+    // This is the key: use AuthorityState's thread-safe snapshot method
+    state.checkpoint_all_dbs(&snapshot_path, &epoch_store, true)
+        .map_err(|e| format!("Failed to create database snapshot: {}", e))?;
+    
+    // Create metadata file
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let metadata = format!(
+        "snapshot_id=auto_epoch_{}\nepoch={}\ncreated_at={}\ncreated_by=mgo-node\ntype=full\nstatus=completed\n",
+        epoch,
+        epoch,
+        now
+    );
+    fs::write(snapshot_path.join("metadata.txt"), metadata)?;
+    
+    info!("✅ Snapshot created successfully at: {:?}", snapshot_path);
+    Ok(())
+}
+
+/// Parse epoch from snapshot request content
+fn parse_snapshot_request(content: &str) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+    // Format: "SNAPSHOT_REQUEST|epoch=2|path=...|timestamp=...|requester=..."
+    for part in content.split('|') {
+        if let Some(epoch_str) = part.strip_prefix("epoch=") {
+            return epoch_str.parse::<u64>()
+                .map_err(|e| format!("Invalid epoch in request: {}", e).into());
+        }
+    }
+    Err("No epoch found in snapshot request".into())
 }
 
 /// Check for snapshot restore configuration and apply epoch override if needed
