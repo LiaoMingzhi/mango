@@ -1676,19 +1676,19 @@ impl StateCollector {
                             vec!["0x1".to_string(), "0x2".to_string()] // Most packages depend on stdlib and mgo
                         };
                         
-                        let package_entry = PackageEntry {
+            let package_entry = PackageEntry {
                             package_id: format!("{}", object_id),
                             version,
                             modules,
                             dependencies,
                             published_at: version, // Use version as a proxy for publication time
-                        };
-                        
-                        package_index.entries.push(package_entry);
-                        collected_packages += 1;
-                        
+            };
+            
+            package_index.entries.push(package_entry);
+            collected_packages += 1;
+        
                         if collected_packages % 50 == 0 {
-                            debug!("Collected {} package entries", collected_packages);
+        debug!("Collected {} package entries", collected_packages);
                         }
                     }
                 }
@@ -1930,7 +1930,7 @@ impl StateCollector {
                         "custom_event"
                     };
                     
-                    let event_entry = EventIndexEntry {
+            let event_entry = EventIndexEntry {
                         event_type: format!("{}::{}", event_category, collected_events),
                         transaction_digest: format!("{}", effects.transaction_digest()),
                         event_sequence: collected_events,
@@ -1987,12 +1987,12 @@ impl StateCollector {
                 let event_entry = EventIndexEntry {
                     event_type: event_type.to_string(),
                     transaction_digest: format!("system_tx_{}", i),
-                    event_sequence: i as u64,
+                event_sequence: i as u64,
                     timestamp: current_time + i as u64,
-                };
-                
-                event_index.entries.push(event_entry);
-                collected_events += 1;
+            };
+            
+            event_index.entries.push(event_entry);
+            collected_events += 1;
             }
         }
         

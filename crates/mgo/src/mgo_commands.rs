@@ -2083,7 +2083,46 @@ async fn try_create_snapshot_via_running_node(
 async fn get_current_epoch_from_running_node() -> Result<u64, anyhow::Error> {
     use std::process::Command;
     
-    // Try to get epoch from node status files or database
+    // Method 1: Check authorities_db for epoch directories
+    if let Ok(output) = Command::new("find")
+        .args(&["authorities_db", "-name", "epoch_*", "-type", "d"])
+        .output() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let mut max_epoch = 0u64;
+        
+        for line in output_str.lines() {
+            if let Some(path_part) = line.split('/').last() {
+                if let Some(epoch_str) = path_part.strip_prefix("epoch_") {
+                    if let Ok(epoch) = epoch_str.parse::<u64>() {
+                        max_epoch = max_epoch.max(epoch);
+                    }
+                }
+            }
+        }
+        
+        if max_epoch > 0 {
+            return Ok(max_epoch);
+        }
+    }
+    
+    // Method 2: Try to read from mgo client
+    if let Ok(output) = Command::new("mgo")
+        .args(&["client", "committee"])
+        .output() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        for line in output_str.lines() {
+            if line.contains("epoch") {
+                // Parse epoch from output like "Epoch: 3"
+                if let Some(epoch_part) = line.split(':').nth(1) {
+                    if let Ok(epoch) = epoch_part.trim().parse::<u64>() {
+                        return Ok(epoch);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Method 3: Check current directory for any epoch hints
     if let Ok(output) = Command::new("find")
         .args(&[".", "-name", "epoch_*", "-type", "d"])
         .output() {
@@ -2103,8 +2142,8 @@ async fn get_current_epoch_from_running_node() -> Result<u64, anyhow::Error> {
         }
     }
     
-    // Fallback: assume current epoch is recent
-    Ok(2) // Use epoch 2 as detected from the logs
+    // Final fallback: read from any available source
+    Err(anyhow::anyhow!("Cannot determine current epoch from running node"))
 }
     
     if !json {
