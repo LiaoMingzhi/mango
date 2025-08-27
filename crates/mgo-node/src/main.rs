@@ -308,12 +308,32 @@ async fn process_snapshot_request(
     let epoch_store = state.epoch_store_for_testing(); // Use for_testing since it's accessible
     let snapshot_path = std::path::Path::new(&requested_path);
     
-    info!("📸 Creating database snapshot...");
+    info!("📸 Creating complete directory structure snapshot...");
 
-    // This is the key: use AuthorityState's thread-safe snapshot method
-    // NOTE: checkpoint_all_dbs will create the directory itself, don't pre-create it!
-    state.checkpoint_all_dbs(&snapshot_path, &epoch_store, true)
-        .map_err(|e| format!("Failed to create database snapshot: {}", e))?;
+    // Create snapshot directory first
+    fs::create_dir_all(&snapshot_path)?;
+
+    // Copy complete database directories for proper restoration
+    let current_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+    
+    // Copy authorities_db directory
+    let authorities_src = current_dir.join("authorities_db");
+    let authorities_dst = snapshot_path.join("authorities_db");
+    if authorities_src.exists() {
+        info!("📁 Copying authorities_db...");
+        copy_directory(&authorities_src, &authorities_dst)
+            .map_err(|e| format!("Failed to copy authorities_db: {}", e))?;
+    }
+    
+    // Copy consensus_db directory
+    let consensus_src = current_dir.join("consensus_db");
+    let consensus_dst = snapshot_path.join("consensus_db");
+    if consensus_src.exists() {
+        info!("📁 Copying consensus_db...");
+        copy_directory(&consensus_src, &consensus_dst)
+            .map_err(|e| format!("Failed to copy consensus_db: {}", e))?;
+    }
     
     // Create metadata file
     let now = std::time::SystemTime::now()
@@ -357,6 +377,36 @@ fn parse_snapshot_request(content: &str) -> Result<(u64, String), Box<dyn std::e
     let path = path.ok_or("No path found in snapshot request")?;
     
     Ok((epoch, path))
+}
+
+/// Recursively copy a directory and all its contents
+fn copy_directory(src: &std::path::Path, dst: &std::path::Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::fs;
+    
+    if !src.exists() {
+        return Err(format!("Source directory does not exist: {:?}", src).into());
+    }
+    
+    // Create destination directory
+    fs::create_dir_all(dst)?;
+    
+    // Read source directory
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let file_name = entry.file_name();
+        let dst_path = dst.join(&file_name);
+        
+        if src_path.is_dir() {
+            // Recursively copy subdirectory
+            copy_directory(&src_path, &dst_path)?;
+        } else {
+            // Copy file
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    
+    Ok(())
 }
 
 /// Check for snapshot restore configuration and apply epoch override if needed
