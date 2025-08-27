@@ -308,12 +308,10 @@ async fn process_snapshot_request(
     let epoch_store = state.epoch_store_for_testing(); // Use for_testing since it's accessible
     let snapshot_path = std::path::Path::new(&requested_path);
     
-    // Create directory if it doesn't exist
-    fs::create_dir_all(&snapshot_path)?;
-    
     info!("📸 Creating database snapshot...");
-    
+
     // This is the key: use AuthorityState's thread-safe snapshot method
+    // NOTE: checkpoint_all_dbs will create the directory itself, don't pre-create it!
     state.checkpoint_all_dbs(&snapshot_path, &epoch_store, true)
         .map_err(|e| format!("Failed to create database snapshot: {}", e))?;
     
