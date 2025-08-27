@@ -2711,7 +2711,7 @@ async fn run_snapshot_command(
         },
 
         SnapshotCommand::List { .. } => {
-            // Read all snapshots from the snapshots directory
+            // Read all snapshots from the snapshots directory (both .json files and directories)
             let mut snapshots = Vec::new();
             
             if snapshots_dir.exists() {
@@ -2719,9 +2719,39 @@ async fn run_snapshot_command(
                     for entry in entries {
                         if let Ok(entry) = entry {
                             let path = entry.path();
+                            
+                            // Check for .json files (legacy format)
                             if path.extension().and_then(|s| s.to_str()) == Some("json") {
                                 if let Ok(content) = fs::read_to_string(&path) {
                                     snapshots.push(content);
+                                }
+                            }
+                            // Check for directory format snapshots (new format)
+                            else if path.is_dir() {
+                                let metadata_file = path.join("metadata.txt");
+                                if metadata_file.exists() {
+                                    if let Ok(metadata_content) = fs::read_to_string(&metadata_file) {
+                                        // Parse metadata.txt to create JSON format for compatibility
+                                        let mut snapshot_data = std::collections::HashMap::new();
+                                        
+                                        for line in metadata_content.lines() {
+                                            if let Some((key, value)) = line.split_once('=') {
+                                                snapshot_data.insert(key.trim().to_string(), value.trim().to_string());
+                                            }
+                                        }
+                                        
+                                        // Create compatible JSON structure
+                                        let snapshot_json = format!(
+                                            r#"{{"id": "{}", "type": "{}", "epoch": {}, "created": "{}", "status": "{}"}}"#,
+                                            snapshot_data.get("snapshot_id").unwrap_or(&"unknown".to_string()),
+                                            snapshot_data.get("type").unwrap_or(&"full".to_string()),
+                                            snapshot_data.get("epoch").unwrap_or(&"0".to_string()),
+                                            snapshot_data.get("created_at").unwrap_or(&"unknown".to_string()),
+                                            snapshot_data.get("status").unwrap_or(&"unknown".to_string())
+                                        );
+                                        
+                                        snapshots.push(snapshot_json);
+                                    }
                                 }
                             }
                         }
@@ -2906,7 +2936,7 @@ async fn run_rollback_command(cmd: RollbackCommand) -> Result<(), anyhow::Error>
                     let backup_snapshot_id = rollback_manager.create_pre_rollback_backup().await?;
                     
                     // Step 5: 停止共识进程
-            println!("⏸️  停止共识进程...");
+                    println!("⏸️  停止共识进程...");
                     rollback_manager.stop_consensus_processes(force).await?;
                     
                     // Step 6: 执行快照恢复
