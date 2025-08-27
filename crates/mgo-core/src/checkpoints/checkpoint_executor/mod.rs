@@ -193,15 +193,15 @@ impl CheckpointExecutor {
                 .unwrap_or_else(|| {
                     // This could be a snapshot restore scenario or fresh start
                     if epoch_store.epoch() > 1 && total_checkpoints > 10 {
-                        // FIXED: Snapshot restore scenario should start from 0, not total_checkpoints
-                        // to avoid checkpoint sequence mismatch after data reset
-                        warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - FIXED to start from checkpoint 0", 
+                        // Likely snapshot restore scenario: higher epoch with significant checkpoint history
+                        warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
                               epoch_store.epoch(), total_checkpoints);
-                        0
+                        total_checkpoints
                     } else {
                         // Fresh start or minimal state: start from checkpoint 0
                         warn!("🎯 FRESH START MODE: Epoch {}, {} checkpoints - starting from checkpoint 0", 
                               epoch_store.epoch(), total_checkpoints);
+                              
                         0
                     }
                 })

@@ -39,6 +39,36 @@ use mgo_types::crypto::{SignatureScheme, MgoKeyPair};
 use mgo_types::messages_checkpoint::CheckpointSequenceNumber;
 use tracing::info;
 
+/// Copy a directory and all its contents recursively (for snapshot restore)
+fn copy_directory_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), anyhow::Error> {
+    use std::fs;
+    
+    if !src.exists() {
+        return Err(anyhow!("Source directory does not exist: {:?}", src));
+    }
+    
+    // Create destination directory
+    fs::create_dir_all(dst)?;
+    
+    // Read source directory
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let file_name = entry.file_name();
+        let dst_path = dst.join(&file_name);
+        
+        if src_path.is_dir() {
+            // Recursively copy subdirectory
+            copy_directory_recursive(&src_path, &dst_path)?;
+        } else {
+            // Copy file
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    
+    Ok(())
+}
+
 // Mgo-snapshot integration (simplified)
 use mgo_snapshot::{
     manager::SnapshotManager,
@@ -862,7 +892,7 @@ async fn restore_snapshot(
             }
         }
         
-        // Clean existing data directories
+        // ENHANCED RESTORE: Clean and properly restore data directories
         if !json {
             println!("🧹 Cleaning existing data directories...");
         }
@@ -873,6 +903,79 @@ async fn restore_snapshot(
                 if let Err(e) = fs::remove_dir_all(dir) {
                     if !json {
                         println!("⚠️  Warning: Failed to remove {}: {}", dir, e);
+                    }
+                }
+            }
+        }
+        
+        // CRITICAL FIX: Perform actual database directory restoration
+        if is_directory_format {
+            if !json {
+                println!("📁 PRODUCTION RESTORE: Copying complete database directories from snapshot...");
+            }
+            
+            // Copy authorities_db directory from snapshot
+            let snapshot_authorities = snapshot_dir.join("authorities_db");
+            if snapshot_authorities.exists() {
+                if let Err(e) = copy_directory_recursive(&snapshot_authorities, &Path::new("authorities_db")) {
+                    if !json {
+                        println!("⚠️  Warning: Failed to copy authorities_db: {}", e);
+                    }
+                } else {
+                    if !json {
+                        println!("✅ authorities_db copied successfully");
+                    }
+                }
+            }
+            
+            // Copy consensus_db directory from snapshot
+            let snapshot_consensus = snapshot_dir.join("consensus_db");
+            if snapshot_consensus.exists() {
+                if let Err(e) = copy_directory_recursive(&snapshot_consensus, &Path::new("consensus_db")) {
+                    if !json {
+                        println!("⚠️  Warning: Failed to copy consensus_db: {}", e);
+                    }
+                } else {
+                    if !json {
+                        println!("✅ consensus_db copied successfully");
+                    }
+                }
+            }
+            
+            // CRITICAL FIX: Reset checkpoint database state to prevent 7644 errors
+            if !json {
+                println!("🔧 CHECKPOINT FIX: Resetting checkpoint database state...");
+            }
+            
+            // Find node ID directory
+            if let Ok(entries) = fs::read_dir("authorities_db") {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.is_dir() && !path.file_name().unwrap().to_string_lossy().contains("txt") {
+                            let checkpoints_path = path.join("live/checkpoints");
+                            let epochs_backup_path = path.join("live/epochs_backup");
+                            
+                            // Backup and reset checkpoints to prevent 7644 errors
+                            if checkpoints_path.exists() {
+                                let backup_path = path.join("live/checkpoints_backup_restore");
+                                if let Err(e) = fs::rename(&checkpoints_path, &backup_path) {
+                                    if !json {
+                                        println!("⚠️  Warning: Failed to backup checkpoints: {}", e);
+                                    }
+                                }
+                                if let Err(e) = fs::create_dir_all(&checkpoints_path) {
+                                    if !json {
+                                        println!("⚠️  Warning: Failed to recreate checkpoints dir: {}", e);
+                                    }
+                                } else {
+                                    if !json {
+                                        println!("✅ Checkpoint database state reset to prevent 7644 errors");
+                                    }
+                                }
+                            }
+                            break;
+                        }
                     }
                 }
             }
