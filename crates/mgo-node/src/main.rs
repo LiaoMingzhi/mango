@@ -379,7 +379,18 @@ fn parse_snapshot_request(content: &str) -> Result<(u64, String), Box<dyn std::e
     Ok((epoch, path))
 }
 
-/// Recursively copy a directory and all its contents
+/// Check if a file should be skipped during snapshot creation
+fn should_skip_file(file_name: &str) -> bool {
+    // Skip RocksDB runtime files that are not needed for restoration
+    file_name.ends_with(".sst") ||           // RocksDB SST files (runtime data)
+    file_name.starts_with("LOG.old.") ||     // RocksDB old log files
+    file_name.ends_with(".tmp") ||           // Temporary files
+    file_name.ends_with("~") ||              // Backup files
+    file_name.starts_with(".#")              // Lock files from editors
+    // Note: Keep LOCK files as they exist in backup directories too
+}
+
+/// Recursively copy a directory and all its contents (with filtering for snapshot creation)
 fn copy_directory(src: &std::path::Path, dst: &std::path::Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use std::fs;
     
@@ -395,12 +406,18 @@ fn copy_directory(src: &std::path::Path, dst: &std::path::Path) -> Result<(), Bo
         let entry = entry?;
         let src_path = entry.path();
         let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
         let dst_path = dst.join(&file_name);
         
         if src_path.is_dir() {
             // Recursively copy subdirectory
             copy_directory(&src_path, &dst_path)?;
         } else {
+            // Skip runtime/temporary files that shouldn't be in snapshots
+            if should_skip_file(&file_name_str) {
+                info!("⏭️  Skipping runtime file: {}", file_name_str);
+                continue;
+            }
             // Copy file
             fs::copy(&src_path, &dst_path)?;
         }
