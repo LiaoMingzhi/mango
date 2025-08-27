@@ -688,9 +688,37 @@ async fn restore_snapshot(
     
     // Step 1: Validate snapshot exists (using mango-cluster path)
     let snapshots_dir = Path::new("../mango-cluster/snapshots");
-    let snapshot_file = snapshots_dir.join(format!("{}.json", snapshot_id));
     
-    if !snapshot_file.exists() {
+    // Support both .json files (legacy) and directory format (new)
+    let snapshot_file = snapshots_dir.join(format!("{}.json", snapshot_id));
+    let snapshot_dir = snapshots_dir.join(&snapshot_id);
+    let metadata_file = snapshot_dir.join("metadata.txt");
+    
+    let (snapshot_metadata, is_directory_format) = if snapshot_file.exists() {
+        // Legacy .json format
+        (fs::read_to_string(&snapshot_file)?, false)
+    } else if metadata_file.exists() {
+        // New directory format - read metadata.txt and convert to JSON
+        let metadata_content = fs::read_to_string(&metadata_file)?;
+        let mut snapshot_data = std::collections::HashMap::new();
+        
+        for line in metadata_content.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                snapshot_data.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+        
+        // Convert to JSON format for compatibility
+        let json_data = format!(
+            r#"{{"id": "{}", "type": "{}", "epoch": {}, "created": "{}", "status": "{}"}}"#,
+            snapshot_data.get("snapshot_id").unwrap_or(&snapshot_id.to_string()),
+            snapshot_data.get("type").unwrap_or(&"full".to_string()),
+            snapshot_data.get("epoch").unwrap_or(&"0".to_string()),
+            snapshot_data.get("created_at").unwrap_or(&"unknown".to_string()),
+            snapshot_data.get("status").unwrap_or(&"completed".to_string())
+        );
+        (json_data, true)
+    } else {
         if json {
             println!(r#"{{"error":"snapshot_not_found","snapshot_id":"{}"}}"#, snapshot_id);
         } else {
@@ -698,10 +726,9 @@ async fn restore_snapshot(
             println!("💡 Use 'mgo snapshot list' to see available snapshots");
         }
         return Err(anyhow!("Snapshot not found: {}", snapshot_id));
-    }
+    };
     
-    // Step 2: Read snapshot metadata
-    let snapshot_metadata = fs::read_to_string(&snapshot_file)?;
+    // Step 2: Parse snapshot metadata
     let snapshot_data: serde_json::Value = serde_json::from_str(&snapshot_metadata)?;
     
     let target_epoch = snapshot_data["epoch"].as_u64().unwrap_or(0);
@@ -2948,14 +2975,14 @@ async fn run_rollback_command(cmd: RollbackCommand) -> Result<(), anyhow::Error>
                     rollback_manager.validate_epoch_state(epoch).await?;
                     
                     // Step 8: 重启共识进程
-            println!("🔄 重启共识进程...");
+                    println!("🔄 重启共识进程...");
                     rollback_manager.restart_consensus_processes().await?;
                     
                     // Step 9: 网络状态同步
-            println!("🌐 同步网络状态...");
+                    println!("🌐 同步网络状态...");
                     rollback_manager.sync_network_state().await?;
                     
-            println!("🏁 世纪回滚操作完成");
+                    println!("🏁 世纪回滚操作完成");
                     println!("📊 恢复统计: 世纪 {} -> {} 项已恢复", epoch, restore_result.items_restored);
                     println!("💾 备份快照: {} (可用于紧急恢复)", backup_snapshot_id);
                 }
