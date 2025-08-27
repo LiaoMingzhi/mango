@@ -2110,25 +2110,35 @@ async fn try_create_snapshot_via_running_node(
 async fn get_current_epoch_from_running_node() -> Result<u64, anyhow::Error> {
     use std::process::Command;
     
-    // Method 1: Check authorities_db for epoch directories
+    // Method 1: Check authorities_db for epoch directories with actual data
     if let Ok(output) = Command::new("find")
         .args(&["authorities_db", "-name", "epoch_*", "-type", "d"])
         .output() {
         let output_str = String::from_utf8_lossy(&output.stdout);
-        let mut max_epoch = 0u64;
+        let mut max_epoch = None;
         
         for line in output_str.lines() {
             if let Some(path_part) = line.split('/').last() {
                 if let Some(epoch_str) = path_part.strip_prefix("epoch_") {
                     if let Ok(epoch) = epoch_str.parse::<u64>() {
-                        max_epoch = max_epoch.max(epoch);
+                        // Verify this epoch directory contains actual data files
+                        if let Ok(file_count) = Command::new("find")
+                            .args(&[line.trim(), "-type", "f"])
+                            .output() {
+                            let file_list = String::from_utf8_lossy(&file_count.stdout);
+                            if file_list.lines().count() > 0 {
+                                max_epoch = Some(max_epoch.unwrap_or(0).max(epoch));
+                                println!("🔍 Found epoch {} with {} data files", epoch, file_list.lines().count());
+                            }
+                        }
                     }
                 }
             }
         }
         
-        if max_epoch > 0 {
-            return Ok(max_epoch);
+        if let Some(epoch) = max_epoch {
+            println!("🎯 Current epoch from authorities_db: {}", epoch);
+            return Ok(epoch);
         }
     }
     
