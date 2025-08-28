@@ -296,9 +296,12 @@ async fn process_snapshot_request(
     
     // Parse request file
     let content = fs::read_to_string(request_file)?;
-    let (epoch, requested_path) = parse_snapshot_request(&content)?;
+    let (epoch, checkpoint, requested_path) = parse_snapshot_request(&content)?;
     
     info!("📊 Processing snapshot request for epoch: {}", epoch);
+    if let Some(cp) = checkpoint {
+        info!("🎯 Target checkpoint: {}", cp);
+    }
     info!("📁 Requested snapshot path: {}", requested_path);
     
     // Get AuthorityState from the node
@@ -357,15 +360,19 @@ async fn process_snapshot_request(
 }
 
 /// Parse epoch and path from snapshot request content
-fn parse_snapshot_request(content: &str) -> Result<(u64, String), Box<dyn std::error::Error + Send + Sync>> {
-    // Format: "SNAPSHOT_REQUEST|epoch=2|path=...|timestamp=...|requester=..."
+fn parse_snapshot_request(content: &str) -> Result<(u64, Option<u64>, String), Box<dyn std::error::Error + Send + Sync>> {
+    // Format: "SNAPSHOT_REQUEST|epoch=2|checkpoint=3000|path=...|timestamp=...|requester=..."
     let mut epoch = None;
+    let mut checkpoint = None;
     let mut path = None;
     
     for part in content.split('|') {
         if let Some(epoch_str) = part.strip_prefix("epoch=") {
             epoch = Some(epoch_str.parse::<u64>()
                 .map_err(|e| format!("Invalid epoch in request: {}", e))?);
+        } else if let Some(checkpoint_str) = part.strip_prefix("checkpoint=") {
+            checkpoint = Some(checkpoint_str.parse::<u64>()
+                .map_err(|e| format!("Invalid checkpoint in request: {}", e))?);
         } else if let Some(path_str) = part.strip_prefix("path=") {
             // Remove quotes if present
             let cleaned_path = path_str.trim_matches('"').to_string();
@@ -376,7 +383,7 @@ fn parse_snapshot_request(content: &str) -> Result<(u64, String), Box<dyn std::e
     let epoch = epoch.ok_or("No epoch found in snapshot request")?;
     let path = path.ok_or("No path found in snapshot request")?;
     
-    Ok((epoch, path))
+    Ok((epoch, checkpoint, path))
 }
 
 /// Recursively copy a directory and all its contents (complete snapshot creation)

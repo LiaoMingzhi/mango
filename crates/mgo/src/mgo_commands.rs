@@ -2191,6 +2191,185 @@ async fn try_create_snapshot_via_running_node(
     Err(anyhow::anyhow!("Timeout waiting for snapshot creation"))
 }
 
+/// Create checkpoint-synchronized snapshot (waits for target checkpoint)
+async fn try_create_checkpoint_synchronized_snapshot(
+    snapshot_path: &std::path::Path,
+    target_epoch: Option<u64>, 
+    target_checkpoint: Option<u64>,
+    json: bool
+) -> Result<(), anyhow::Error> {
+    use std::process::Command;
+    use std::time::Duration;
+    use std::fs;
+    use tokio::time::{sleep, timeout};
+    
+    let target_checkpoint = target_checkpoint.unwrap_or(0);
+    
+    // Method 1: Check if mgo-node is running
+    let node_running = Command::new("pgrep")
+        .args(&["-f", "mgo-node"])
+        .output()
+        .map(|output| !output.stdout.is_empty())
+        .unwrap_or(false);
+    
+    if !node_running {
+        return Err(anyhow::anyhow!("No running mgo-node found"));
+    }
+    
+    if !json {
+        println!("🎯 Checkpoint-synchronized snapshot creation");
+        println!("📊 Target checkpoint: {}", target_checkpoint);
+        println!("⏳ Waiting for checkpoint to reach target...");
+    }
+    
+    // Wait for checkpoint to reach target value
+    let max_wait_time = Duration::from_secs(300); // 5 minutes timeout
+    let poll_interval = Duration::from_secs(2);   // Check every 2 seconds
+    
+    let wait_result = timeout(max_wait_time, async {
+        loop {
+            // Get current checkpoint from node logs
+            let current_checkpoint = get_current_checkpoint_from_running_node().await
+                .unwrap_or(0);
+            
+            if !json {
+                println!("📈 Current checkpoint: {} (target: {})", current_checkpoint, target_checkpoint);
+            }
+            
+            if current_checkpoint >= target_checkpoint {
+                if !json {
+                    println!("✅ Target checkpoint {} reached! Creating snapshot...", target_checkpoint);
+                }
+                break;
+            }
+            
+            sleep(poll_interval).await;
+        }
+    }).await;
+    
+    if wait_result.is_err() {
+        return Err(anyhow::anyhow!(
+            "Timeout waiting for checkpoint {} (waited {} seconds)", 
+            target_checkpoint, max_wait_time.as_secs()
+        ));
+    }
+    
+    // Create snapshot request file for node to process
+    let current_epoch = get_current_epoch_from_running_node().await?;
+    let epoch_to_use = target_epoch.unwrap_or(current_epoch);
+    
+    let snapshot_request = format!(
+        "SNAPSHOT_REQUEST|epoch={}|checkpoint={}|path={:?}|timestamp={}|requester=mgo-snapshot-sync", 
+        epoch_to_use,
+        target_checkpoint,
+        snapshot_path,
+        chrono::Utc::now().timestamp()
+    );
+    
+    let request_file = "snapshot_request.signal";
+    fs::write(request_file, &snapshot_request)?;
+    
+    if !json {
+        println!("📤 Sent synchronized snapshot request to running node...");
+        println!("⏳ Waiting for node to create snapshot...");
+    }
+    
+    // Wait for snapshot to be created (with timeout)
+    let mut attempts = 0;
+    let max_attempts = 60; // 60 seconds timeout
+    
+    while attempts < max_attempts {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        attempts += 1;
+        
+        // Check if snapshot directory was created
+        if snapshot_path.exists() && snapshot_path.is_dir() {
+            let metadata_file = snapshot_path.join("metadata.txt");
+            if metadata_file.exists() {
+                if !json {
+                    println!("✅ Checkpoint-synchronized snapshot created successfully!");
+                    println!("📁 Location: {:?}", snapshot_path);
+                    println!("🎯 Checkpoint: {}", target_checkpoint);
+                }
+                let _ = fs::remove_file(request_file);
+                return Ok(());
+            }
+        }
+        
+        // Check for error file
+        if let Ok(error_content) = fs::read_to_string("snapshot_request.error") {
+            let _ = fs::remove_file("snapshot_request.error");
+            let _ = fs::remove_file(request_file);
+            return Err(anyhow::anyhow!("Node reported error: {}", error_content));
+        }
+        
+        if !json && attempts % 10 == 0 {
+            println!("⏳ Still waiting... ({}/{})", attempts, max_attempts);
+        }
+    }
+    
+    // Timeout
+    let _ = fs::remove_file(request_file);
+    Err(anyhow::anyhow!("Timeout waiting for checkpoint-synchronized snapshot creation"))
+}
+
+/// Get current checkpoint from running node
+async fn get_current_checkpoint_from_running_node() -> Result<u64, anyhow::Error> {
+    use std::process::Command;
+    use std::path::Path;
+    
+    // Method 1: Check recent log entries for checkpoint information
+    let log_files = [
+        "logs/node_1/mgo-node.log",
+        "logs/mgo-node.log", 
+        "../mango-cluster/logs/node_1/mgo-node.log",
+        "/root/workspace/mango-cluster/logs/node_1/mgo-node.log"
+    ];
+    
+    for log_file in &log_files {
+        if Path::new(log_file).exists() {
+            if let Ok(output) = Command::new("tail")
+                .args(&["-n", "100", log_file])
+                .output() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                
+                // Look for checkpoint creation messages
+                for line in output_str.lines().rev() {
+                    if line.contains("Creating checkpoint") && line.contains("sequence") {
+                        // Parse: "Creating checkpoint ... sequence 1234"
+                        if let Some(seq_part) = line.split("sequence").nth(1) {
+                            if let Some(number_str) = seq_part.trim().split(',').next() {
+                                if let Ok(checkpoint) = number_str.trim().parse::<u64>() {
+                                    return Ok(checkpoint);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Method 2: Check mgo client checkpoint info
+    if let Ok(output) = Command::new("mgo")
+        .args(&["client", "state"])
+        .output() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        for line in output_str.lines() {
+            if line.contains("checkpoint") || line.contains("Checkpoint") {
+                // Try to extract checkpoint number
+                if let Some(parts) = line.split(':').nth(1) {
+                    if let Ok(checkpoint) = parts.trim().parse::<u64>() {
+                        return Ok(checkpoint);
+                    }
+                }
+            }
+        }
+    }
+    
+    Err(anyhow::anyhow!("Unable to determine current checkpoint"))
+}
+
 /// Get current epoch from running node
 async fn get_current_epoch_from_running_node() -> Result<u64, anyhow::Error> {
     use std::process::Command;
@@ -2279,15 +2458,24 @@ async fn get_current_epoch_from_running_node() -> Result<u64, anyhow::Error> {
         println!("🔍 Attempting to connect to running mgo-node for safe snapshot creation...");
     }
     
-    // Try to create snapshot using checkpoint_all_dbs method  
-    let snapshot_path = if let Some(target_epoch) = epoch {
+    // Enhanced snapshot path generation with checkpoint support
+    let snapshot_path = if let (Some(target_epoch), Some(target_checkpoint)) = (epoch, checkpoint) {
+        snapshots_dir.join(format!("auto_epoch_{}_checkpoint_{}_{}", 
+            target_epoch, target_checkpoint, chrono::Utc::now().format("%Y%m%d_%H%M%S")))
+    } else if let Some(target_epoch) = epoch {
         snapshots_dir.join(format!("auto_epoch_{}_{}", target_epoch, chrono::Utc::now().format("%Y%m%d_%H%M%S")))
     } else {
         snapshots_dir.join(format!("auto_snapshot_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S")))
     };
     
-    // First, try the thread-safe approach through running node
-    let use_safe_method = try_create_snapshot_via_running_node(&snapshot_path, epoch, json).await;
+    // Enhanced: Smart snapshot creation with checkpoint synchronization
+    let use_safe_method = if checkpoint.is_some() {
+        // If checkpoint is specified, wait for it and then create snapshot
+        try_create_checkpoint_synchronized_snapshot(&snapshot_path, epoch, checkpoint, json).await
+    } else {
+        // Default behavior: immediate snapshot creation
+        try_create_snapshot_via_running_node(&snapshot_path, epoch, json).await
+    };
     
     if use_safe_method.is_ok() {
         if !json {
