@@ -94,6 +94,22 @@ pub struct CheckpointExecutor {
 }
 
 impl CheckpointExecutor {
+    /// Find the highest checkpoint sequence number by scanning the certified checkpoints database
+    /// This method is used when watermarks are not available (e.g., after snapshot restore)
+    fn find_highest_checkpoint_from_data(&self) -> Result<Option<u64>, anyhow::Error> {
+        use typed_store::Map;
+        
+        // Scan the certified_checkpoints database to find the highest sequence number
+        let mut highest_seq = None;
+        
+        // Use an iterator to scan all checkpoints
+        for (seq, _checkpoint) in self.checkpoint_store.certified_checkpoints.unbounded_iter() {
+            let seq_num = seq;
+            highest_seq = Some(highest_seq.unwrap_or(0).max(seq_num));
+        }
+        
+        Ok(highest_seq)
+    }
     pub fn new(
         mailbox: broadcast::Receiver<VerifiedCheckpoint>,
         checkpoint_store: Arc<CheckpointStore>,
@@ -194,9 +210,35 @@ impl CheckpointExecutor {
                     // This could be a snapshot restore scenario or fresh start
                     if epoch_store.epoch() > 1 && total_checkpoints > 10 {
                         // Likely snapshot restore scenario: higher epoch with significant checkpoint history
-                        warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - using advanced logic", 
-                              epoch_store.epoch(), total_checkpoints);
-                        total_checkpoints
+                        // Try to find the actual highest checkpoint sequence number from the database
+                        // Since watermarks might not be available after snapshot restore, scan the actual data
+                        // Try to get highest verified checkpoint first (may work even if watermarks are partially available)
+                        if let Ok(Some(checkpoint)) = self.checkpoint_store.get_highest_verified_checkpoint() {
+                            let highest_seq = *checkpoint.sequence_number();
+                            let next_seq = highest_seq + 1;
+                            warn!("🔄 SNAPSHOT RESTORE MODE: Found highest verified checkpoint {}, continuing from {}", 
+                                  highest_seq, next_seq);
+                            next_seq
+                        } else if let Ok(Some(highest_seq)) = self.find_highest_checkpoint_from_data() {
+                            let next_seq = highest_seq + 1;
+                            warn!("🔄 SNAPSHOT RESTORE MODE: Epoch {}, {} checkpoints - found highest checkpoint {}, continuing from {}", 
+                                  epoch_store.epoch(), total_checkpoints, highest_seq, next_seq);
+                            next_seq
+                        } else {
+                            // Fallback: scan certified checkpoints to find the highest sequence number
+                            warn!("🔄 SNAPSHOT RESTORE MODE: Scanning certified checkpoints to find highest sequence...");
+                            match self.find_highest_checkpoint_from_data() {
+                                Ok(Some(highest_seq)) => {
+                                    let next_seq = highest_seq + 1;
+                                    warn!("🔄 Found highest checkpoint {} from scan, continuing from {}", highest_seq, next_seq);
+                                    next_seq
+                                },
+                                _ => {
+                                    warn!("🔄 Could not determine highest checkpoint, using total_checkpoints as fallback: {}", total_checkpoints);
+                                    total_checkpoints
+                                }
+                            }
+                        }
                     } else {
                         // Fresh start or minimal state: start from checkpoint 0
                         warn!("🎯 FRESH START MODE: Epoch {}, {} checkpoints - starting from checkpoint 0", 
