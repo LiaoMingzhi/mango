@@ -2319,11 +2319,12 @@ async fn get_current_checkpoint_from_running_node() -> Result<u64, anyhow::Error
     use std::path::Path;
     
     // Method 1: Check recent log entries for checkpoint information
+    // Use unified log path for all nodes
     let log_files = [
-        "logs/node_1/mgo-node.log",
+        "logs/node/mgo-node.log",
         "logs/mgo-node.log", 
-        "../mango-cluster/logs/node_1/mgo-node.log",
-        "/root/workspace/mango-cluster/logs/node_1/mgo-node.log"
+        "../mango-cluster/logs/node/mgo-node.log",
+        "/root/workspace/mango-cluster/logs/node/mgo-node.log"
     ];
     
     for log_file in &log_files {
